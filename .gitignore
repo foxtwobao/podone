@@ -1,0 +1,17 @@
+# server/ 和 firmware/ 各自的 .gitignore 仍然生效，这里只写根目录层面的规则。
+
+.DS_Store
+.vscode/
+.idea/
+node_modules/
+
+# 服务端部署机上的私有文件
+server/.env.local
+server/.lab/
+
+# 上游大文件不进仓，按 docs/hardware/*/fetch-large-files.sh 下载并校验
+docs/hardware/*/examples/*.zip
+!docs/hardware/*/examples/*-bsp-*.zip
+docs/hardware/*/firmware/*.zip
+docs/hardware/*/firmware/*.bin
+docs/hardware/*/datasheets/*technical_reference_manual*.pdf

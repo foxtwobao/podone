@@ -1,0 +1,606 @@
+<!doctype html>
+<!--
+  微雪 ESP32-S3-Touch-AMOLED-1.75C 圆屏交互预览。
+  表情模型移植自 zongzhu-bot 的 eye_model.h（MIT，© Liu-zhongxian），
+  眨眼、眼神、触摸手势与字幕排版移植自同目录 eye_display.h，
+  倾斜与摇晃判定移植自 motion_gesture.h。
+  画布 466×466，与实机分辨率一致，1 像素对应 1 设备像素。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1.75C 圆屏交互预览</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #161616; color: #e8e8e8;
+    font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    display: flex; gap: 36px; justify-content: center; align-items: flex-start;
+    padding: 32px 24px; flex-wrap: wrap;
+  }
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .bezel {
+    width: 520px; height: 520px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 42%, #2c2c2c 0 236px, #0c0c0c 237px 252px, #3a3a3a 253px 260px);
+    box-shadow: 0 18px 50px rgba(0,0,0,.55), inset 0 0 0 1px #000;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  canvas { border-radius: 50%; cursor: pointer; touch-action: none; display: block; }
+  .hint { color: #9a9a9a; font-size: 13px; text-align: center; line-height: 1.7; max-width: 520px; }
+  .panel { width: 340px; display: flex; flex-direction: column; gap: 18px; padding-top: 8px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  .sub { color: #9a9a9a; font-size: 12.5px; line-height: 1.6; margin: 0; }
+  .group { display: flex; flex-direction: column; gap: 8px; }
+  .label { font-size: 12px; letter-spacing: .08em; color: #8d8d8d; text-transform: uppercase; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  button {
+    background: #262626; color: #e8e8e8; border: 1px solid #3a3a3a;
+    border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { border-color: #6a6a6a; }
+  button.active { background: #ededed; color: #161616; border-color: #ededed; }
+  .slider { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  input[type=range] { flex: 1; accent-color: #ededed; }
+  .readout { color: #9a9a9a; font-variant-numeric: tabular-nums; min-width: 92px; text-align: right; font-size: 12px; }
+  .note { font-size: 12px; color: #8d8d8d; line-height: 1.6; }
+  kbd {
+    font-family: inherit; font-size: 11px; border: 1px solid #4a4a4a;
+    border-radius: 4px; padding: 0 5px; color: #cfcfcf;
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="bezel"><canvas id="screen" width="466" height="466"></canvas></div>
+  <div class="hint">
+    在圆屏上操作：单击开心，双击惊讶，长按生气，按住拖动眼睛跟随，<br>
+    左右滑切换表情，上滑惊讶，下滑困倦。侧栏可模拟服务端状态下发、倾斜与摇晃。
+  </div>
+</div>
+<div class="panel">
+  <div>
+    <h1>ESP32-S3-Touch-AMOLED-1.75C</h1>
+    <p class="sub">466×466 圆屏交互预览。表情、眨眼、眼神、手势与姿态的数值移植自 zongzhu-bot 2.5.2.9（MIT），情绪取值来自当前小智服务端实际下发的集合。</p>
+  </div>
+
+  <div class="group">
+    <div class="label">设备状态</div>
+    <div class="row" id="states"></div>
+    <p class="note" id="state-note"></p>
+  </div>
+
+  <div class="group">
+    <div class="label">服务端情绪（type: llm）</div>
+    <div class="row" id="emotions"></div>
+    <p class="note">来自 <code>core/utils/textUtils.py</code> 的 EMOJI_MAP，回复文本里出现 emoji 时下发一次。点选后保持，直到设备状态切换。</p>
+  </div>
+
+  <div class="group">
+    <div class="label">字幕模式 · 长按 BOOT 切换</div>
+    <div class="row">
+      <button id="boot">BOOT 长按</button>
+      <span class="readout" id="subtitle-readout"></span>
+    </div>
+    <p class="note">完整显示全部对话并缩小眼睛，简洁只留回答第一句，关闭不显示文字。设置在实机上写入 NVS，断电保留。</p>
+  </div>
+
+  <div class="group">
+    <div class="label">姿态 · QMI8658</div>
+    <div class="slider"><span>左右倾斜</span><input type="range" id="tilt-x" min="-100" max="100" value="0"><span class="readout" id="tilt-x-readout"></span></div>
+    <div class="slider"><span>前后倾斜</span><input type="range" id="tilt-y" min="-100" max="100" value="0"><span class="readout" id="tilt-y-readout"></span></div>
+    <div class="row"><button id="shake">摇晃 4 下</button><button id="level">放平</button></div>
+    <p class="note">实机上倾斜来自加速度计，约 0.3g 达到满幅；左右交替摆动 4 次判定为摇晃，进入眩晕，放稳约 0.7 秒后恢复。</p>
+  </div>
+
+  <div class="group">
+    <div class="label">对话内容</div>
+    <div class="row" id="scripts"></div>
+    <p class="note" id="fps"></p>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ---------- 移植自 eye_model.h ----------
+const Mood = {
+  Idle: 0, Listening: 1, Thinking: 2, Speaking: 3, Happy: 4, Excited: 5,
+  Curious: 6, Confused: 7, Angry: 8, Surprised: 9, Sad: 10, Sleepy: 11, Dizzy: 12,
+};
+const MOOD_NAME = ["待机","聆听","思考","说话","开心","兴奋","好奇","困惑","生气","惊讶","难过","困倦","眩晕"];
+const HOME_X = 100;
+
+function wave(t, hz, phase = 0) { return Math.sin((t * hz + phase) * 6.2831853); }
+function mirror(s) { return { ...s, dx: -s.dx, tilt: -s.tilt, lidTilt: -s.lidTilt }; }
+
+function faceFor(mood, t) {
+  const l = { dx: 0, dy: 0, w: 76, h: 150, tilt: 0, lid: 0, lidTilt: 0, arc: 0, spin: 0 };
+  let left, right;
+  switch (mood) {
+    case Mood.Listening:
+      l.w = 82; l.h = 140 + 6 * wave(t, 0.9); l.tilt = -4; l.dy = -4;
+      left = l; right = mirror(l); right.h = 140 - 6 * wave(t, 0.9); break;
+    case Mood.Thinking:
+      l.w = 80; l.h = 124; l.dx = -16 + 6 * wave(t, 0.25); l.dy = -18;
+      left = l; right = { ...l, h: 108, lid: 0.18, lidTilt: -8 }; break;
+    case Mood.Speaking:
+      l.w = 80 - 3 * wave(t, 5.3); l.h = 136 + 9 * wave(t, 5.3) + 5 * wave(t, 3.1, 0.3);
+      left = l; right = { ...l }; break;
+    case Mood.Happy:
+      l.arc = 1; l.w = 104; l.h = 104; l.dy = 8 + 4 * Math.abs(wave(t, 1.6)); l.tilt = -6;
+      left = l; right = mirror(l); break;
+    case Mood.Excited:
+      l.w = 94; l.h = 156; l.dy = -6 - 6 * Math.abs(wave(t, 2.4));
+      left = l; right = { ...l }; break;
+    case Mood.Curious:
+      l.w = 86; l.h = 166; l.tilt = -6; l.dy = -6;
+      left = l; right = { ...l, w: 70, h: 112, lid: 0.12 }; break;
+    case Mood.Confused:
+      l.w = 80; l.h = 132 + 10 * wave(t, 0.6); l.tilt = 8;
+      left = l; right = { ...l, h: 112 - 10 * wave(t, 0.6), tilt: -5, dy: -10 }; break;
+    case Mood.Angry:
+      l.w = 92; l.h = 118; l.dy = 4; l.lid = 0.36; l.lidTilt = 16;
+      left = l; right = mirror(l); break;
+    case Mood.Surprised:
+      l.w = l.h = 118 + 4 * wave(t, 1.2); l.dy = -10;
+      left = l; right = { ...l }; break;
+    case Mood.Sad:
+      l.w = 86; l.h = 108; l.dy = 20 + 3 * wave(t, 0.4); l.lid = 0.3; l.lidTilt = -14;
+      left = l; right = mirror(l); break;
+    case Mood.Sleepy:
+      l.arc = -1; l.w = 112; l.h = 112; l.dy = 26 + 4 * wave(t, 0.22); l.tilt = 4;
+      left = l; right = mirror(l); break;
+    case Mood.Dizzy:
+      l.w = l.h = 108; l.spin = 1; l.dx = 7 * wave(t, 0.9); l.dy = 7 * wave(t, 0.9, 0.25);
+      left = l; right = { ...l, dx: -l.dx }; break;
+    default:
+      l.h = 150 + 3 * wave(t, 0.3); l.dy = 2 * wave(t, 0.17);
+      left = l; right = { ...l }; break;
+  }
+  return { left, right };
+}
+
+const lerp = (a, b, k) => a + (b - a) * k;
+function mix(a, b, k) {
+  const o = {};
+  for (const key in a) o[key] = lerp(a[key], b[key], k);
+  return o;
+}
+const ease = (dtMs, rate = 11) => 1 - Math.exp(-dtMs * 0.001 * rate);
+
+// ---------- 移植自 eye_display.h 的屏幕排版 ----------
+const SCREEN = 466;
+const LAYOUTS = {
+  large:  { boxY: 100, boxH: 280, centerY: 140, scale: 1.0,  textY: 330, textH: 80 },
+  medium: { boxY: 100, boxH: 230, centerY: 115, scale: 0.82, textY: 330, textH: 80 },
+  small:  { boxY: 108, boxH: 140, centerY: 70,  scale: 0.6,  textY: 252, textH: 160 },
+};
+const FOLLOW_PX = 150;
+
+// 服务端 EMOJI_MAP 的情绪到表情的映射，移植自 eye_display.h 的 MoodFor。
+const EMOTION_MOOD = {
+  thinking: Mood.Thinking, listening: Mood.Listening, speaking: Mood.Speaking,
+  happy: Mood.Happy, laughing: Mood.Happy, loving: Mood.Happy, singing: Mood.Happy,
+  winking: Mood.Happy, excited: Mood.Excited, dancing: Mood.Excited, rapper: Mood.Excited,
+  basketball: Mood.Excited, cool: Mood.Excited, curious: Mood.Curious, confident: Mood.Curious,
+  confused: Mood.Confused, embarrassed: Mood.Confused, angry: Mood.Angry,
+  surprised: Mood.Surprised, shocked: Mood.Surprised, sad: Mood.Sad, crying: Mood.Sad,
+  sleepy: Mood.Sleepy, relaxed: Mood.Sleepy, dizzy: Mood.Dizzy, silly: Mood.Dizzy, funny: Mood.Dizzy,
+};
+
+const SUBTITLE = ["完整", "简洁", "关闭"];
+const SCRIPTS = {
+  "天气": { user: "帮我看下明天的天气", bot: "明天多云转小雨，最高二十六度，最低十八度。出门记得带伞，早晚温差比较大。" },
+  "长回复": { user: "帮我把这周的安排整理一下", bot: "这周有四件事。周一上午十点和供应商对需求，材料在共享盘的第三文件夹。周三下午要交月度报告的初稿，数据截止到周二。周五晚上有家庭聚餐，地点还没定。另外提醒一句，周四的快递还没取。" },
+  "清空": null,
+};
+
+// ---------- 运行状态 ----------
+const state = {
+  device: "idle",          // idle | listening | speaking | connecting
+  serverEmotion: null,     // 服务端下发的情绪，设备状态切换时清除
+  reaction: null,          // { mood, until }
+  dizzy: false,
+  tiltX: 0, tiltY: 0,
+  subtitle: 0,
+  script: null,
+  gazeX: 0, gazeY: 0,
+  glanceX: 0, glanceY: 0, nextGlance: 1500,
+  nextBlink: 2500, blinkStart: 0, blinking: false, doubleBlink: false,
+  face: faceFor(Mood.Idle, 0),
+  lastTick: performance.now(),
+  browseIndex: 0,
+  frames: 0, fpsStamp: performance.now(), fps: 0,
+};
+
+function deviceMood() {
+  return { listening: Mood.Listening, speaking: Mood.Speaking, connecting: Mood.Thinking }[state.device]
+    ?? Mood.Idle;
+}
+function baseMood() {
+  if (state.serverEmotion && state.serverEmotion in EMOTION_MOOD) return EMOTION_MOOD[state.serverEmotion];
+  return deviceMood();
+}
+// 开机、配网、激活是设备自己的流程，服务端此时还没有会话，表情由流程决定。
+function currentMood(now) {
+  if (state.device === "boot") return Mood.Thinking;
+  if (state.device === "wifi") return Mood.Confused;
+  if (state.device === "activating") return Mood.Curious;
+  if (state.dizzy) return Mood.Dizzy;
+  if (state.reaction && state.reaction.until - now > 0) return state.reaction.mood;
+  return baseMood();
+}
+function react(mood, now, ms = 2000) { state.reaction = { mood, until: now + ms }; }
+
+// ---------- 眨眼与眼神，移植自 BlinkFactor / UpdateGaze ----------
+function blinkFactor(now, mood) {
+  const allowed = ![Mood.Happy, Mood.Sleepy, Mood.Dizzy, Mood.Surprised].includes(mood);
+  if (!state.blinking) {
+    if (now < state.nextBlink || !allowed) return 1;
+    state.blinking = true; state.blinkStart = now;
+  }
+  const age = now - state.blinkStart;
+  if (age < 70) return Math.max(0.06, 1 - age / 70);
+  if (age < 100) return 0.06;
+  if (age < 240) return Math.max(0.06, (age - 100) / 140);
+  state.blinking = false;
+  if (!state.doubleBlink && Math.random() < 0.2) { state.doubleBlink = true; state.nextBlink = now + 90; }
+  else { state.doubleBlink = false; state.nextBlink = now + 2600 + Math.random() * 3400; }
+  return 1;
+}
+
+function updateGaze(now, dt, mood, centerY, follow) {
+  const glancing = [Mood.Idle, Mood.Listening, Mood.Speaking].includes(mood);
+  if (now >= state.nextGlance) {
+    state.nextGlance = now + 1200 + Math.random() * 2300;
+    const home = !glancing || Math.random() < 1 / 3;
+    state.glanceX = home ? 0 : (Math.random() - 0.5) * 0.7;
+    state.glanceY = home ? 0 : (Math.random() - 0.5) * 0.4;
+  }
+  let gx = state.tiltX + state.glanceX, gy = state.tiltY + state.glanceY;
+  if (follow) { gx = follow.x / FOLLOW_PX; gy = follow.y / FOLLOW_PX; }
+  const k = ease(dt, follow ? 14 : 18);
+  state.gazeX += (Math.max(-1, Math.min(1, gx)) - state.gazeX) * k;
+  state.gazeY += (Math.max(-1, Math.min(1, gy)) - state.gazeY) * k;
+}
+
+// ---------- 绘制 ----------
+const canvas = document.getElementById("screen");
+const ctx = canvas.getContext("2d");
+
+function layout() {
+  // 配网与激活必须把提示文字完整显示出来，不受字幕模式影响。
+  if (state.device === "wifi" || state.device === "activating") return LAYOUTS.small;
+  const s = state.subtitle;
+  const script = SCRIPTS[state.script];
+  const hasText = script && (s === 0 ? true : s === 1);
+  if (!hasText) return LAYOUTS.large;
+  return s === 0 ? LAYOUTS.small : LAYOUTS.medium;
+}
+
+function roundedRect(x, y, w, h) {
+  const r = Math.min(w, h) / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawEye(shape, homeX, centerY, scale, blink, now, index) {
+  const shapeWeight = 1 - Math.min(1, Math.abs(shape.arc));
+  const cx = homeX + (shape.dx + state.gazeX * 34) * scale;
+  const cy = centerY + (shape.dy + state.gazeY * 26) * scale;
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (shapeWeight >= 0.03) {
+    const w = Math.max(4, shape.w * scale);
+    const h = Math.max(4, shape.h * scale * blink * shapeWeight);
+    ctx.save();
+    if (h > w) ctx.rotate(shape.tilt * Math.PI / 180);
+    ctx.globalAlpha = shapeWeight;
+    ctx.fillStyle = "#fff";
+    roundedRect(-w / 2, -h / 2, w, h);
+    ctx.fill();
+    ctx.restore();
+    if (shape.lid >= 0.01) {
+      const edge = -h / 2 + shape.lid * h;
+      const slope = Math.tan(shape.lidTilt * Math.PI / 180) * w / 2;
+      // 与固件 DrawEye 一致：在眼睛上方盖一个黑色楔形，下沿就是眼皮线。
+      const reach = Math.max(w, h) / 2 + 2;
+      const k = (2 * slope) / Math.max(1, w);
+      ctx.save();
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      ctx.moveTo(-reach, -reach); ctx.lineTo(reach, -reach);
+      ctx.lineTo(reach, edge + slope + k * (reach - w / 2));
+      ctx.lineTo(-reach, edge - slope - k * (reach - w / 2));
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    if (shape.spin >= 0.05) {
+      const rot = (now * 0.42) * Math.PI / 180 + index * Math.PI / 2;
+      ctx.save();
+      ctx.globalAlpha = shape.spin;
+      ctx.strokeStyle = "#000";
+      ctx.lineCap = "round";
+      for (let r = 0; r < 2; r++) {
+        const radius = Math.min(w, h) * (r ? 0.2 : 0.37);
+        ctx.lineWidth = Math.max(3, Math.min(w, h) / 11);
+        ctx.beginPath();
+        const start = r ? -rot : rot;
+        const sweep = (r ? 220 : 260) * Math.PI / 180;
+        ctx.arc(0, 0, radius, start, start + sweep);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+  const arcWeight = Math.min(1, Math.abs(shape.arc));
+  if (arcWeight >= 0.03) {
+    const up = shape.arc > 0;
+    const d = Math.max(10, shape.w * scale);
+    ctx.save();
+    ctx.globalAlpha = arcWeight;
+    ctx.translate(0, d * (up ? 0.22 : -0.28));
+    ctx.rotate(shape.tilt * Math.PI / 180);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = Math.max(3, d * (up ? 0.22 : 0.085));
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    const a0 = (up ? 182 : 32) * Math.PI / 180;
+    const a1 = (up ? 358 : 148) * Math.PI / 180;
+    ctx.arc(0, 0, d / 2, a0, a1);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function wrapText(text, maxWidth) {
+  const lines = [];
+  let line = "";
+  for (const ch of text) {
+    if (ctx.measureText(line + ch).width > maxWidth && line) { lines.push(line); line = ch; }
+    else line += ch;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function firstSentence(text, maxChars) {
+  const stop = text.search(/[。！？!?\n]/);
+  const cut = stop > 0 ? text.slice(0, stop + 1) : text;
+  const chars = Array.from(cut);
+  return chars.length > maxChars ? chars.slice(0, maxChars).join("") + "..." : cut;
+}
+
+// 配网与激活的提示文字来自固件语言包的拼接方式，不受字幕模式影响。
+const SETUP_TEXT = {
+  wifi: "连接热点 Xiaozhi-1A2B\n浏览器访问 192.168.4.1",
+  activating: "bot.example.com\n482917",
+};
+
+function drawText(spec) {
+  let text = "";
+  if (state.device in SETUP_TEXT) {
+    text = SETUP_TEXT[state.device];
+  } else {
+    const script = SCRIPTS[state.script];
+    if (!script) return;
+    if (state.subtitle === 0) text = (script.user ? script.user + "\n" : "") + script.bot;
+    else if (state.subtitle === 1) text = firstSentence(script.bot, 18);
+  }
+  if (!text) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, spec.textY, SCREEN, spec.textH);
+  ctx.clip();
+  ctx.fillStyle = "#fff";
+  ctx.font = state.subtitle === 0 ? "16px 'PingFang SC', sans-serif" : "18px 'PingFang SC', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const lines = text.split("\n").flatMap(p => wrapText(p, 284));
+  const lineH = 24;
+  const total = lines.length * lineH;
+  let offset = 0;
+  if (total > spec.textH) {
+    const span = total - spec.textH;
+    const cycle = 2500 + span * 55 + 3000 + 300 + 2500;
+    const phase = (performance.now() % cycle);
+    const scroll = span * 55;
+    if (phase > 2500 && phase < 2500 + scroll) offset = -((phase - 2500) / 55);
+    else if (phase >= 2500 + scroll) offset = -span;
+  }
+  lines.forEach((l, i) => ctx.fillText(l, SCREEN / 2, spec.textY + offset + i * lineH));
+  ctx.restore();
+}
+
+function frame(now) {
+  const dt = Math.min(now - state.lastTick, 100);
+  state.lastTick = now;
+  const spec = layout();
+  const mood = currentMood(now);
+  const follow = pointer.down && pointer.gesture === "follow"
+    ? { x: pointer.x - SCREEN / 2, y: pointer.y - (spec.boxY + spec.centerY) } : null;
+  updateGaze(now, dt, mood, spec.boxY + spec.centerY, follow);
+  const blink = blinkFactor(now, mood);
+  const target = faceFor(mood, now / 1000);
+  const k = ease(dt, mood === Mood.Dizzy ? 16 : 11);
+  state.face = { left: mix(state.face.left, target.left, k), right: mix(state.face.right, target.right, k) };
+
+  ctx.clearRect(0, 0, SCREEN, SCREEN);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, SCREEN, SCREEN);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(SCREEN / 2, SCREEN / 2, SCREEN / 2, 0, Math.PI * 2);
+  ctx.clip();
+
+  ctx.fillStyle = "#bdbdbd";
+  ctx.font = "13px 'PingFang SC', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const statusText = {
+    boot: "启动中", wifi: "配网模式", activating: "激活设备",
+    idle: "待命", listening: "聆听中", speaking: "说话中", connecting: "连接中",
+  }[state.device];
+  ctx.fillText(statusText, SCREEN / 2, 28 + 18);
+
+  const half = HOME_X * spec.scale;
+  drawEye(state.face.left, SCREEN / 2 - half, spec.centerY + (spec.boxY - 0), spec.scale, blink, now, 0);
+  drawEye(state.face.right, SCREEN / 2 + half, spec.centerY + spec.boxY, spec.scale, blink, now, 1);
+  drawText(spec);
+  ctx.restore();
+
+  state.frames++;
+  if (now - state.fpsStamp > 1000) {
+    state.fps = state.frames / ((now - state.fpsStamp) / 1000);
+    state.frames = 0; state.fpsStamp = now;
+    document.getElementById("fps").textContent =
+      `预览帧率 ${state.fps.toFixed(0)} fps · 当前表情：${MOOD_NAME[mood]}`;
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------- 触摸手势，移植自 PollTouch ----------
+const pointer = { down: false, x: 0, y: 0, px: 0, py: 0, time: 0, gesture: "none", committed: false, pendingTap: 0 };
+const rect = () => canvas.getBoundingClientRect();
+function localPoint(e) {
+  const r = rect();
+  const src = e.touches ? e.touches[0] : e;
+  return { x: (src.clientX - r.left) * SCREEN / r.width, y: (src.clientY - r.top) * SCREEN / r.height };
+}
+canvas.addEventListener("pointerdown", e => {
+  canvas.setPointerCapture(e.pointerId);
+  const p = localPoint(e);
+  pointer.down = true; pointer.committed = false; pointer.gesture = "none";
+  pointer.px = pointer.x = p.x; pointer.py = pointer.y = p.y; pointer.time = performance.now();
+});
+canvas.addEventListener("pointermove", e => {
+  if (!pointer.down) return;
+  const p = localPoint(e);
+  pointer.x = p.x; pointer.y = p.y;
+  const now = performance.now();
+  const dx = p.x - pointer.px, dy = p.y - pointer.py;
+  if (pointer.gesture === "none" && Math.max(Math.abs(dx), Math.abs(dy)) >= 14) {
+    pointer.gesture = now - pointer.time >= 220 ? "follow" : Math.abs(dx) >= Math.abs(dy) ? "h" : "v";
+  }
+  if (pointer.committed) return;
+  if (pointer.gesture === "h" && Math.abs(dx) >= 60) {
+    const browse = [Mood.Happy, Mood.Excited, Mood.Curious, Mood.Confused, Mood.Angry, Mood.Surprised, Mood.Sad, Mood.Sleepy, Mood.Dizzy];
+    state.browseIndex = (state.browseIndex + (dx > 0 ? 1 : browse.length - 1)) % browse.length;
+    react(browse[state.browseIndex], now, 3000); pointer.committed = true;
+  } else if (pointer.gesture === "v" && Math.abs(dy) >= 60) {
+    react(dy < 0 ? Mood.Surprised : Mood.Sleepy, now, 3000); pointer.committed = true;
+  } else if (pointer.gesture === "none" && now - pointer.time >= 650) {
+    react(Mood.Angry, now); pointer.committed = true; pointer.gesture = "follow";
+  }
+});
+function pointerUp() {
+  const now = performance.now();
+  if (pointer.down && !pointer.committed && pointer.gesture === "none") {
+    if (pointer.pendingTap && now - pointer.pendingTap <= 280) { pointer.pendingTap = 0; react(Mood.Surprised, now); }
+    else pointer.pendingTap = now;
+  }
+  pointer.down = false; pointer.gesture = "none";
+}
+canvas.addEventListener("pointerup", pointerUp);
+canvas.addEventListener("pointercancel", pointerUp);
+setInterval(() => {
+  if (pointer.pendingTap && performance.now() - pointer.pendingTap > 280) {
+    react(Mood.Happy, performance.now()); pointer.pendingTap = 0;
+  }
+}, 60);
+
+// ---------- 侧栏 ----------
+function buttons(container, items, get, set) {
+  const el = document.getElementById(container);
+  items.forEach(([id, label]) => {
+    const b = document.createElement("button");
+    b.textContent = label; b.dataset.id = id;
+    b.addEventListener("click", () => set(id));
+    el.appendChild(b);
+  });
+  const refresh = () => el.querySelectorAll("button").forEach(b => b.classList.toggle("active", b.dataset.id === get()));
+  return refresh;
+}
+
+const STATE_NOTES = {
+  boot: "上电后检查网络与版本，状态栏显示“启动中”，表情为思考。这个阶段没有可操作项。",
+  wifi: "没存过 Wi-Fi，或连接超过 60 秒仍失败，设备自己开热点。手机连上热点后用浏览器打开提示的地址填账号。开机阶段短按 BOOT 也会进入这里。",
+  activating: "连上网后向服务端报到，拿到 6 位激活码，屏幕显示、语音逐位播报。用已登录 IDONE 的账号在智控台输入这个码，设备绑定到该账号下的智能体。每 3 到 10 秒重试一次，绑定成功后提示消失。",
+  idle: "待命。服务端下发的情绪在这里生效；点按屏幕的手势反应会临时盖过它。",
+  listening: "聆听中。服务端此时下发的是 neutral，表情由设备状态推导，不看情绪。",
+  speaking: "说话中。同上，表情跟随设备状态，嘴部随语音节奏张合。",
+  connecting: "正在建立会话，表情为思考。",
+};
+const refreshStates = buttons("states",
+  [["boot", "开机"], ["wifi", "配网"], ["activating", "激活"],
+   ["idle", "待命"], ["listening", "聆听"], ["speaking", "说话"], ["connecting", "连接中"]],
+  () => state.device,
+  id => {
+    state.device = id; state.serverEmotion = null; state.reaction = null;
+    refreshStates(); refreshEmotions();
+    document.getElementById("state-note").textContent = STATE_NOTES[id];
+  });
+
+const EMOTION_LABELS = [
+  ["happy", "开心"], ["loving", "喜爱"], ["surprised", "惊讶"], ["shocked", "惊吓"],
+  ["sad", "难过"], ["crying", "哭泣"], ["angry", "生气"], ["confused", "困惑"],
+  ["thinking", "思考"], ["sleepy", "困倦"], ["relaxed", "放松"], ["silly", "俏皮"],
+  ["funny", "滑稽"], ["cool", "得意"], ["confident", "自信"], ["embarrassed", "尴尬"],
+];
+const refreshEmotions = buttons("emotions", EMOTION_LABELS,
+  () => state.serverEmotion ?? "",
+  id => { state.serverEmotion = state.serverEmotion === id ? null : id; state.reaction = null; refreshEmotions(); });
+
+function refreshSubtitle() {
+  document.getElementById("subtitle-readout").textContent = "字幕：" + SUBTITLE[state.subtitle];
+}
+document.getElementById("boot").addEventListener("click", () => { state.subtitle = (state.subtitle + 1) % 3; refreshSubtitle(); });
+
+function tiltReadout() {
+  document.getElementById("tilt-x-readout").textContent = (state.tiltX >= 0 ? "右 " : "左 ") + Math.abs(state.tiltX).toFixed(2);
+  document.getElementById("tilt-y-readout").textContent = (state.tiltY >= 0 ? "下 " : "上 ") + Math.abs(state.tiltY).toFixed(2);
+}
+for (const axis of ["x", "y"]) {
+  document.getElementById("tilt-" + axis).addEventListener("input", e => {
+    state[axis === "x" ? "tiltX" : "tiltY"] = e.target.value / 100;
+    tiltReadout();
+  });
+}
+document.getElementById("level").addEventListener("click", () => {
+  state.tiltX = state.tiltY = 0; state.dizzy = false;
+  document.getElementById("tilt-x").value = 0; document.getElementById("tilt-y").value = 0;
+  tiltReadout();
+});
+document.getElementById("shake").addEventListener("click", () => {
+  // 复现 motion_gesture.h 的判定：左右交替摆动超过 0.55g 共 4 次触发眩晕。
+  const lobe = 0.7, steps = [1, -1, 1, -1];
+  let i = 0;
+  const tick = () => {
+    state.tiltX = steps[i] * lobe; i++;
+    if (i < steps.length) setTimeout(tick, 160);
+    else { state.dizzy = true; state.tiltX = 0; setTimeout(() => { state.dizzy = false; }, 1400); }
+  };
+  tick();
+});
+
+const refreshScripts = buttons("scripts", [["天气", "天气"], ["长回复", "长回复"], ["清空", "清空"]],
+  () => state.script ?? "清空",
+  id => { state.script = id === "清空" ? null : id; refreshScripts(); });
+
+refreshStates(); refreshEmotions(); refreshSubtitle(); tiltReadout(); refreshScripts();
+document.getElementById("state-note").textContent = STATE_NOTES[state.device];
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

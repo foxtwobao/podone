@@ -1,0 +1,298 @@
+{
+  "product": "ESP32-S3-Touch-AMOLED-1.75C",
+  "release": "v1.0.2",
+  "generated_at": "2026-10-15T09:07:27.178144+00:00",
+  "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+  "asset_count": 17,
+  "assets": [
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-01_AXP2101-v5.5.5-combined.zip",
+      "size": 269548,
+      "sha256": "2d7668c56d18d77740eb18625d870117381dac3d78a1fd3d9547c520dac704f1",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-01_AXP2101-v5.5.5",
+      "framework": "esp-idf",
+      "framework_version": "v5.5.5",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/01_AXP2101",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-01_AXP2101-v5.5.5-combined.bin",
+        "size": 283280,
+        "sha256": "81c9ac49096b1d078f979e97f88b22a2b5c6c19b125c172014e23c89a34ba23e"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-01_AXP2101-v6.0.2-combined.zip",
+      "size": 244303,
+      "sha256": "f7bb5ca46e517d8e0aa6b3dad7fdf3d85f286a56e48ae7edce351e090be9ff64",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-01_AXP2101-v6.0.2",
+      "framework": "esp-idf",
+      "framework_version": "v6.0.2",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/01_AXP2101",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-01_AXP2101-v6.0.2-combined.bin",
+        "size": 258608,
+        "sha256": "7dbcecb8e26cb07225c7e0582738c351b2c6d1400cf3990fcc5bb2a35e5a8d84"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-01_HelloWorld-arduino-3.3.11-combined.zip",
+      "size": 500179,
+      "sha256": "2df5913bf4675480abaf2f18c1f16b85c82e5b59d276cb956f8d6fd4ec21c216",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-01_HelloWorld-arduino-3.3.11",
+      "framework": "arduino",
+      "framework_version": "3.3.11",
+      "target": "esp32s3",
+      "project": "examples/arduino/examples/01_HelloWorld",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-01_HelloWorld-arduino-3.3.11-combined.bin",
+        "size": 16777216,
+        "sha256": "b5f9da5a53fa63f179b0680868db8675b48637f2380597e150446933a93ecd9e"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-02_GFX_AsciiTable-arduino-3.3.11-combined.zip",
+      "size": 500371,
+      "sha256": "0e1a7a1de2969e688de01e0328a82b7cff8e372e99ece4c1bc2bfc9e094c8b1b",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-02_GFX_AsciiTable-arduino-3.3.11",
+      "framework": "arduino",
+      "framework_version": "3.3.11",
+      "target": "esp32s3",
+      "project": "examples/arduino/examples/02_GFX_AsciiTable",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-02_GFX_AsciiTable-arduino-3.3.11-combined.bin",
+        "size": 16777216,
+        "sha256": "129fde6f3af43ad8f9389985c27ede2c8a32e13b075c6402a00d79b70dd27a0c"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-02_lvgl_demo_v9-v5.5.5-combined.zip",
+      "size": 1190790,
+      "sha256": "63575ece27989ac75fa43a68ecf1682331fa5a6235b232fbdc8422722c3fdb85",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-02_lvgl_demo_v9-v5.5.5",
+      "framework": "esp-idf",
+      "framework_version": "v5.5.5",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/02_lvgl_demo_v9",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-02_lvgl_demo_v9-v5.5.5-combined.bin",
+        "size": 1097952,
+        "sha256": "2168b83ba07451c962b42ddc8ee31808c19e110cb9b5bc4f7cf6ccfb3439ae55"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-02_lvgl_demo_v9-v6.0.2-combined.zip",
+      "size": 1167055,
+      "sha256": "06f9dc78a925a179ebd931ad7ea6f12c2607e5cee29c82b4850940ab85ecc29f",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-02_lvgl_demo_v9-v6.0.2",
+      "framework": "esp-idf",
+      "framework_version": "v6.0.2",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/02_lvgl_demo_v9",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-02_lvgl_demo_v9-v6.0.2-combined.bin",
+        "size": 1061952,
+        "sha256": "54e31142dbf84ae2350f2a303711527c2e04042458f3cc154b8d9c033b07d3d0"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-03_esp-brookesia-v5.5.5-combined.zip",
+      "size": 2346001,
+      "sha256": "4197f418b8dabc57f2cb5a0084f7e086238b272e00c4ca35247eeaddaba4a8c4",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-03_esp-brookesia-v5.5.5",
+      "framework": "esp-idf",
+      "framework_version": "v5.5.5",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/03_esp-brookesia",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-03_esp-brookesia-v5.5.5-combined.bin",
+        "size": 2722576,
+        "sha256": "dfce79df1b098fd932bb796b2705bfe261d4e3873724687ccbe818d4c4d64840"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-03_esp-brookesia-v6.0.2-combined.zip",
+      "size": 2283368,
+      "sha256": "5d0a35c0f368b5fa1ff784ba9cab756fd59cd7f3d304731f31d70b4806e25fb5",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-03_esp-brookesia-v6.0.2",
+      "framework": "esp-idf",
+      "framework_version": "v6.0.2",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/03_esp-brookesia",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-03_esp-brookesia-v6.0.2-combined.bin",
+        "size": 2646832,
+        "sha256": "0b7c5073a9f1c533e4f938284cb54dbe101555ce0afe2d1dc075946eac0e3231"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-03_LVGL_AXP2101_ADC_Data-arduino-3.3.11-combined.zip",
+      "size": 1584186,
+      "sha256": "52278326d9b62a90955ec7e8b3fa37ebca0b4ec8caaba96403cef0ae620afcf1",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-03_LVGL_AXP2101_ADC_Data-arduino-3.3.11",
+      "framework": "arduino",
+      "framework_version": "3.3.11",
+      "target": "esp32s3",
+      "project": "examples/arduino/examples/03_LVGL_AXP2101_ADC_Data",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-03_LVGL_AXP2101_ADC_Data-arduino-3.3.11-combined.bin",
+        "size": 16777216,
+        "sha256": "1d9a63ba8613dbce76bdf14f873d4ace9c90e897821391b85993cdd30cc3a13b"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-04_Immersive_block-v5.5.5-combined.zip",
+      "size": 896326,
+      "sha256": "bdc2b02b8e4d1176d060d080f9b4776ad86c74c524a5f60790b9de18494b94a1",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-04_Immersive_block-v5.5.5",
+      "framework": "esp-idf",
+      "framework_version": "v5.5.5",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/04_Immersive_block",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-04_Immersive_block-v5.5.5-combined.bin",
+        "size": 728480,
+        "sha256": "397683237ee35c2375d02b8570c0f4ca031876d0cb894a1e8ca635859151a9de"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-04_Immersive_block-v6.0.2-combined.zip",
+      "size": 872335,
+      "sha256": "07649dd3abb6dce8869b02f24bc54722ea8ca26c2751f91c8fc45276456d1486",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-04_Immersive_block-v6.0.2",
+      "framework": "esp-idf",
+      "framework_version": "v6.0.2",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/04_Immersive_block",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-04_Immersive_block-v6.0.2-combined.bin",
+        "size": 692560,
+        "sha256": "ab908b9786636d520e30157451d390ea6321a93e475dce898c17d436fa626ee5"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-04_LVGL_QMI8658_ui-arduino-3.3.11-combined.zip",
+      "size": 757213,
+      "sha256": "cded00550e28abe411b40d515b085dca6906ef24ae43bc82f49126168a970376",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-04_LVGL_QMI8658_ui-arduino-3.3.11",
+      "framework": "arduino",
+      "framework_version": "3.3.11",
+      "target": "esp32s3",
+      "project": "examples/arduino/examples/04_LVGL_QMI8658_ui",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-04_LVGL_QMI8658_ui-arduino-3.3.11-combined.bin",
+        "size": 16777216,
+        "sha256": "62aa29b05fcff4827c25fb44db22c499122206881c5b0e789341abf5a01d70f5"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-05_LVGL_Widgets-arduino-3.3.11-combined.zip",
+      "size": 995564,
+      "sha256": "3b37ece3ea94d464b26f7372a95291451ee5fb4d93a1b4e75494bf7d1273f96f",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-05_LVGL_Widgets-arduino-3.3.11",
+      "framework": "arduino",
+      "framework_version": "3.3.11",
+      "target": "esp32s3",
+      "project": "examples/arduino/examples/05_LVGL_Widgets",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-05_LVGL_Widgets-arduino-3.3.11-combined.bin",
+        "size": 16777216,
+        "sha256": "d11cfcd494e871c32455f2241285e5641f73d9ea4373675179a53ce86f7bb0b6"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-05_Spec_Analyzer-v5.5.5-combined.zip",
+      "size": 1027527,
+      "sha256": "42fea0c5c9b6eb9415931a2f75fc88c4a5015850ab3543a77a63621b48d3844e",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-05_Spec_Analyzer-v5.5.5",
+      "framework": "esp-idf",
+      "framework_version": "v5.5.5",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/05_Spec_Analyzer",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-05_Spec_Analyzer-v5.5.5-combined.bin",
+        "size": 843296,
+        "sha256": "2040bd4d3b88688f9f2e565e7ace92d388456b357afc4fcb2ccf127ba48d0360"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-05_Spec_Analyzer-v6.0.2-combined.zip",
+      "size": 1001566,
+      "sha256": "05eb5133d54ef263660ab4ec4e772b91d8412dfb157109f45ee2404864e45439",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-05_Spec_Analyzer-v6.0.2",
+      "framework": "esp-idf",
+      "framework_version": "v6.0.2",
+      "target": "esp32s3",
+      "project": "examples/esp-idf/05_Spec_Analyzer",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-05_Spec_Analyzer-v6.0.2-combined.bin",
+        "size": 806512,
+        "sha256": "3f26046487988eae8a334d03a0389ac6fdc0e35258ba60c67f67b643f6b7e2de"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-06_ES7210-arduino-3.3.11-combined.zip",
+      "size": 472697,
+      "sha256": "ed16fd73de14f97b07570ea1b04c42e817c8f3bb8550535e3bb7f57e558bad89",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-06_ES7210-arduino-3.3.11",
+      "framework": "arduino",
+      "framework_version": "3.3.11",
+      "target": "esp32s3",
+      "project": "examples/arduino/examples/06_ES7210",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-06_ES7210-arduino-3.3.11-combined.bin",
+        "size": 16777216,
+        "sha256": "452fd066d59e21c80c4f68aaf8e8741112c45fd0a2aa440e47940f0b481d51cc"
+      }
+    },
+    {
+      "filename": "ESP32-S3-Touch-AMOLED-1.75C-07_ES8311-arduino-3.3.11-combined.zip",
+      "size": 1471816,
+      "sha256": "a90846651402bf9a81fa05b1163ed250db5da94d09f5407aa7ec874dafbb1c56",
+      "name": "ESP32-S3-Touch-AMOLED-1.75C-07_ES8311-arduino-3.3.11",
+      "framework": "arduino",
+      "framework_version": "3.3.11",
+      "target": "esp32s3",
+      "project": "examples/arduino/examples/07_ES8311",
+      "git_sha": "a7d93cb6c934429b92c9c3c1c1a653c7486617fa",
+      "combined_bin": {
+        "offset": "0x0",
+        "file": "bin/ESP32-S3-Touch-AMOLED-1.75C-07_ES8311-arduino-3.3.11-combined.bin",
+        "size": 16777216,
+        "sha256": "e1c33332d56ca8bb49a90162cd60fb243d7cef6f36df3e711e790cfeef312449"
+      }
+    }
+  ]
+}

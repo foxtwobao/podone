@@ -1,0 +1,14 @@
+{
+  "upstream": {
+    "repository": "https://github.com/foxtwobao/tokenone_xiaozhiserver.git",
+    "branch": "codex/idone-integration",
+    "commit": "9d9c8eb117a674c979b754836d2b8590358bd1b2",
+    "committed_at": "2026-10-08T10:24:41+08:00",
+    "server_version": "0.9.7"
+  },
+  "imported_at": "2026-11-23",
+  "source_status": "abandoned",
+  "history_bundle": "podone-server-history.bundle（仓库外保存，不提交）",
+  "merge_strategy": "git merge -X subtree=server/",
+  "notes": "迁入的是该提交的工作区，包含尚未提交的 IDONE 接入改动。2026-11-23 起源仓库放弃，server/.git 已删除。合并上游见 IMPORT.md。"
+}
