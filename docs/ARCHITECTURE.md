@@ -9,7 +9,7 @@ Podone 是面向自有硬件的语音终端项目。服务端基于定制的小�
 - 服务端以本地 `tokenone_xiaozhiserver` 的 `codex/idone-integration` 分支为基线迁入本仓库 `server/`，保留已完成的 IDONE 登录与 Qwen Omni 改动，不另起分支重做。
 - Reseller 鉴权按该仓库已写好的 [接入实施方案](../../tokenone_xiaozhiserver/docs/reseller-integration-plan.md) 实施，本文只引用不重写。该方案已完成代码对照复核，状态为未实施。
 - 固件以 [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 为上游基线，提交记录写入 `UPSTREAM.json`。表情、手势、姿态这层参考 zongzhu-bot 的 `main/boards/common/zongzhu/`（MIT），按板型适配后放在本仓库，不 fork zongzhu-bot 整体。
-- 首个固件的构建基线沿用本仓库已确定的 **ESP-IDF v5.5.5**，不跟随 zongzhu-bot 的 ESP-IDF 6.0.1。两者的差异在移植时逐项核对，而不是整体升级工具链。
+- 首个固件的构建基线是 **ESP-IDF v6.0.3**。原定的 v5.5.5 在 2026-11-23 改掉：小智 v2.5.0 起要求 ESP-IDF 6.0.1 以上，zongzhu-bot 也用 6.0.1，同一条线更省事。
 - 多硬件通过固件仓库内的板型目录实现，服务端按设备上报的板型选择固件与能力，不按硬件拆服务。
 
 ## 2 现状
@@ -137,9 +137,9 @@ podone/
 
 ### 构建基线
 
-ESP-IDF v5.5.5，目标 `esp32s3`，与 `docs/hardware/ESP32-S3-Touch-AMOLED-1.75C/DEVELOPMENT.md` 一致。LVGL 版本由固件组件清单锁定后写入 `UPSTREAM.json`，不沿用微雪示例的 9.5.0 作为硬性要求，因为小智固件自带显示栈。
+ESP-IDF v6.0.3，目标 `esp32s3`，上游为小智 v2.6.0（提交 `4de00ae`）。v5.5.5 仍装在 `~/esp/esp-idf`，只用于跑微雪示例，微雪 v1.0.2 示例是用它构建的。LVGL 版本由固件组件清单锁定后写入 `UPSTREAM.json`，不沿用微雪示例的 9.5.0 作为硬性要求，因为小智固件自带显示栈。
 
-zongzhu-bot 用 ESP-IDF 6.0.1 构建。移植时逐项确认 `eye_display` 依赖的 LVGL 绘制接口和 `sdkconfig` 项在 v5.5.5 下可用；不可用的部分改写，不因此升级工具链。若后续评估必须升级，按 DEVELOPMENT.md 的约定用同一块板对比两条线后再改基线。
+zongzhu-bot 用 ESP-IDF 6.0.1 构建，和当前基线同属 6.0 系列，移植 `eye_display` 时仍要逐项核对 LVGL 绘制接口和 `sdkconfig` 项。
 
 ## 7 设备协议
 
@@ -171,7 +171,7 @@ zongzhu-bot 用 ESP-IDF 6.0.1 构建。移植时逐项确认 `eye_display` 依�
 
 | 阶段 | 内容 | 完成标准 |
 | --- | --- | --- |
-| 0 基线 | 安装 ESP-IDF v5.5.5，跑通微雪 `02_lvgl_demo_v9`；用小智官方固件的 1.75C 变体连接现有 lab 服务端 | 显示、触摸、录音、播报、唤醒在实板上确认，延迟基线按 reseller 方案第 7 节记录 |
+| 0 基线 | 安装 ESP-IDF，用小智官方固件的 1.75C 变体连接 lab 服务端（2026-11-23 已在实板上跑通，见 HANDOFF） | 显示、触摸、录音、播报、唤醒在实板上确认，延迟基线按 reseller 方案第 7 节记录 |
 | 1 迁入 | 复制 `tokenone_xiaozhiserver` 到 `server/`，核对构建与 lab 部署，补 `UPSTREAM.json` | 迁入后的服务端与源仓库行为一致，密钥未进仓 |
 | 2 表情固件 | 建立 `firmware/` 目录与 1.75C 板型，接入表情、字幕、触摸和姿态 | 不连服务端时，触摸、倾斜、摇晃的反馈与参考项目一致 |
 | 3 链路接通 | 固件连接自有服务端，完成唤醒、对话、朗读，表情跟随状态 | 一轮问答全程走通，断线可重连 |

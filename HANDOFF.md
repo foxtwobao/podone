@@ -21,8 +21,9 @@
 | 内容 | 位置 | 验证情况 |
 | --- | --- | --- |
 | 建仓 | 首次提交 `d90264f` | `server/.git` 已删除，删除前的历史存在仓库外的 `/Volumes/ext/Projects/podone-server-history.bundle`，已 verify；`models/` 的 18 个已跟踪文件已拷回 |
-| ESP-IDF v5.5.5 | `~/esp/esp-idf`，脚本在 `firmware/scripts/` | `idf.py --version` 正常，微雪 `02_lvgl_demo_v9` 编译通过 |
-| 板子识别 | `/dev/cu.usbmodem21101`（USB JTAG_serial debug unit，VID 0x303a） | `esptool.py` 读到 ESP32-S3 (QFN56) rev v0.2，内置 8 MB PSRAM，40 MHz 晶振，Flash 32 MB（厂商 c8 / 设备 4019，quad），MAC `c4:9e:7e:0b:d8:7c`，和 BOARD.md 一致；还没烧录 |
+| ESP-IDF | v6.0.3 在 `~/esp/esp-idf-v6.0.3`（固件基线）；v5.5.5 在 `~/esp/esp-idf`（只给微雪示例用）；脚本在 `firmware/scripts/` | 两个版本 `idf.py --version` 都正常；v5.5.5 编译过微雪 `02_lvgl_demo_v9` |
+| 板子识别 | `/dev/cu.usbmodem21101`（USB JTAG_serial debug unit，VID 0x303a） | `esptool.py` 读到 ESP32-S3 (QFN56) rev v0.2，内置 8 MB PSRAM，40 MHz 晶振，Flash 32 MB（厂商 c8 / 设备 4019，quad），MAC `c4:9e:7e:0b:d8:7c`，和 BOARD.md 一致。烧录前整片 32 MB Flash 备份在仓库外的 `/Volumes/ext/Projects/podone-flash-backups/`，带 SHA-256 |
+| 阶段 0：小智基线 | 小智 v2.6.0 的 1.75C 变体，构建配置 `firmware/boards/waveshare-1.75c/xiaozhi-baseline.json`，源码克隆在仓库外 `/Volumes/ext/Projects/xiaozhi-esp32` | 2026-11-23 实板跑通：屏幕、触摸、音频初始化正常；配网后连上 pod，激活并绑定到 `admin@agentone.wrok` 的智能体；中文语音能识别，回答由 Minimax 合成并播放 |
 | lab 服务迁到 Mac | `/Volumes/ext/Projects/labstack/`（不进仓） | 由另一个会话完成。各 lab 域名不加 `-k` 走 HTTPS 都返回 200；整机重启后能否自动恢复还没测 |
 | 激活页预填激活码 | 提交 `8c5c66a` | 设备收到的文本是 `https://pod.lab.home.arpa/#/bind?code=XXXXXX`，第二行是六位码；镜像构建时 `npm run build`、`mvn package` 都通过 |
 | podone 部署 | compose 项目 `podone`，Caddy 站点 `server/deploy/pod.lab.caddy`（已装到 `/opt/homebrew/etc/caddy/conf.d/pod.caddy`） | 四个容器健康检查通过。HTTPS 首页 200，HTTP 的 OTA 返回新格式的激活提示，WebSocket 握手 101，HTTP 访问其他路径 308 跳转 HTTPS，登录 302 跳到 IDONE 授权页，授权页 200 |
@@ -39,8 +40,17 @@
 1. 用真实账号在浏览器里走一遍：未登录打开绑定链接，经 IDONE 登录后回到绑定页，激活码已预填，绑定成功。这一步要先让浏览器能解析 `pod.lab.home.arpa`：要么在 Mac 的 `/etc/hosts` 加一条，要么等 OpenWrt 改好。
 2. OpenWrt 的 DNS 已改好（2026-11-23 验证）：路由器的 IPv4 和 IPv6 两个 DNS 都把各 lab 域名解析到 `192.168.31.160`，用这个地址访问各站点 HTTPS 都返回 200，设备 OTA、WebSocket 和登录跳转也都正常。Mac `/etc/hosts` 里的 labstack 和 pod 测试条目已经删掉，原文件备份在 `/etc/hosts.bak-podone-20261123`。删掉之后本机也走路由器 DNS，各站点仍然返回 200，podone 登录跳转也正常。还剩一件事：用局域网里的其他设备实际访问一次，浏览器要先导入 Caddy 根证书。
 3. 整机重启，确认 OrbStack、容器、Reseller 和 Caddy 都能自己起来。
-4. 阶段 0：板子已识别。烧录前先备份整片 32 MB Flash，再跑微雪 `02_lvgl_demo_v9`，然后烧小智官方固件，把 OTA 地址设成 `http://pod.lab.home.arpa/xiaozhi/ota/`。
-5. 4.5 区分测试和生产地址：生产地址还没给。
+4. 阶段 0 已跑通，还剩两项：唤醒词"你好小智"还没试；延迟基线还没按 reseller 方案第 7 节记录。
+5. 阶段 2 表情固件：在小智 v2.6.0 上接入 `components/podone` 的表情、字幕、触摸和姿态，接入方式按 `ARCHITECTURE.md` 第 6 节在实板上定。
+
+阶段 0 中途踩到的坑：
+
+- 小智 v2.5.0 起要求 ESP-IDF 6.0.1 以上，所以固件基线从 v5.5.5 改成了 v6.0.3，相关文档已更新。
+- 烧完后芯片停在下载模式，软件复位也出不来，要拔插一次 USB。
+- 服务端本地语音识别 SenseVoiceSmall 缺 `model.pt`（936 MB，被 git 忽略）。缺了它 FunASR 照样报告初始化成功，但识别结果全是乱码。已从原仓库拷回 `server/main/xiaozhi-server/models/SenseVoiceSmall/model.pt`，SHA-256 `833ca2dc…`。新部署时要先放好这个文件。
+- 天气插件用的是上游自带的公共 key，认证失败，要换成自己的。
+- server 运行时会改写 `config/assets/wakeup_words/` 下的唤醒回复音频，git 会显示它被修改，不要提交。
+6. 4.5 区分测试和生产地址：生产地址还没给。
 
 ## 1 用户已确认的决定
 

@@ -24,7 +24,7 @@ firmware/
 
 ## 构建基线
 
-ESP-IDF v5.5.5，目标 `esp32s3`。`build/`、`sdkconfig`、`managed_components/` 是本地产物，不进仓；`sdkconfig.defaults` 和 `dependencies.lock` 进仓。
+ESP-IDF v6.0.3，目标 `esp32s3`。构建前执行 `IDF_PATH_DIR=~/esp/esp-idf-v6.0.3 source firmware/scripts/env.sh`。`build/`、`sdkconfig`、`managed_components/` 是本地产物，不进仓；`sdkconfig.defaults` 和 `dependencies.lock` 进仓。
 
 ## 新增板型
 

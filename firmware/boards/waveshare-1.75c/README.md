@@ -18,7 +18,23 @@
 
 ## 构建
 
-ESP-IDF v5.5.5，目标 `esp32s3`。接入上游固件的方式见 `docs/ARCHITECTURE.md` 第 6 节，需要在实板上验证后确定，因此本目录目前只有板级参数，还不是完整的可编译工程。
+ESP-IDF v6.0.3，目标 `esp32s3`。接入上游固件的方式见 `docs/ARCHITECTURE.md` 第 6 节，表情固件还没开始写，本目录目前只有板级参数，还不是完整的可编译工程。
+
+### 小智基线固件
+
+阶段 0 用小智 v2.6.0 的官方 1.75C 变体验证硬件和服务端。`xiaozhi-baseline.json` 是它的构建配置，和官方 `config.json` 里 1.75C 那一项相同，只多了 OTA 地址 `http://pod.lab.home.arpa/xiaozhi/ota/`。构建步骤：
+
+```bash
+git clone --depth 1 -b v2.6.0 https://github.com/78/xiaozhi-esp32.git
+cp xiaozhi-baseline.json xiaozhi-esp32/main/boards/waveshare/esp32-s3-touch-amoled-1.75/podone.json
+cd xiaozhi-esp32
+IDF_PATH_DIR=~/esp/esp-idf-v6.0.3 source <podone>/firmware/scripts/env.sh
+python scripts/build.py waveshare/esp32-s3-touch-amoled-1.75 -c podone.json --name esp32-s3-touch-amoled-1.75c --language zh-CN
+```
+
+板型参数要写目录路径 `waveshare/esp32-s3-touch-amoled-1.75`。不加 `--language` 时默认是英文。
+
+烧录用 `build/flash_args`。烧完后芯片会停在下载模式（日志显示 `boot:0x23`），拔插一次 USB 才会启动固件。
 
 ## 验收记录
 
