@@ -6,8 +6,21 @@
 #   /mcp/vision/*      视觉分析，Python 8003
 #   其余               web 容器 8002：管理端页面、/mobile/，以及 /xiaozhi/ 下的 manager-api（含 /xiaozhi/ota/）
 
+# 设备不信任 Caddy 本地 CA，走 HTTP。只放行设备用到的匿名接口（见 ShiroConfig 的 anon 列表），
+# 其余请求跳转 HTTPS，登录和管理端不走明文。
 http://pod.lab.home.arpa {
-	redir https://{host}{uri} 308
+	handle /xiaozhi/v1/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle /xiaozhi/ota/* {
+		reverse_proxy 127.0.0.1:8002
+	}
+	handle /xiaozhi/otaMag/download/* {
+		reverse_proxy 127.0.0.1:8002
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
 }
 
 pod.lab.home.arpa {
