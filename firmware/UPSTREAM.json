@@ -1,0 +1,20 @@
+{
+  "xiaozhi-esp32": {
+    "repo": "https://github.com/78/xiaozhi-esp32.git",
+    "tag": "v2.6.0",
+    "commit": "4de00aed740595a8713b01f8332b9b2cf30685bc",
+    "patches": ["patches/xiaozhi-esp32-board-dir.patch"],
+    "lvgl": "9.5.0"
+  },
+  "zongzhu-bot": {
+    "repo": "https://github.com/Liu-zhongxian/zongzhu-bot.git",
+    "commit": "b91d7e24fd45e9c85a055166914c624a08b265fa",
+    "license": "MIT",
+    "files": [
+      "xiaozhi-esp32/main/boards/common/zongzhu/eye_model.h",
+      "xiaozhi-esp32/main/boards/common/zongzhu/eye_display.h",
+      "xiaozhi-esp32/main/boards/common/zongzhu/motion_gesture.h",
+      "xiaozhi-esp32/main/boards/common/zongzhu/qmi8658_motion.h"
+    ]
+  }
+}

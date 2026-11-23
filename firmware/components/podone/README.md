@@ -8,8 +8,20 @@
 | --- | --- | --- |
 | `eyes/eye_model.h` | zongzhu-bot `xiaozhi-esp32/main/boards/common/zongzhu/eye_model.h`，MIT，原文见 `LICENSE-zongzhu` | 13 种表情的形状与动态，纯数学，不依赖 LVGL，内容未改动 |
 | `eyes/mood_map.h` | Podone 新增，映射表与 zongzhu-bot `eye_display.h` 的 `kAliases` 一致 | 服务端情绪名和上游 `Alert` 情绪名到本地表情的映射 |
+| `eyes/eye_display.h` | zongzhu-bot 同名文件，MIT | 绘制、眨眼、眼神、触摸手势、字幕模式。继承小智的 `SpiLcdDisplay`，改动见下节 |
+| `motion/motion_gesture.h` | zongzhu-bot 同名文件，MIT，内容未改动 | 倾斜与左右摇晃检测，输入是屏幕坐标下的重力 |
 
-显示层（绘制、眨眼、眼神跟随、触摸手势、字幕模式）还没有放进来。它在参考项目里继承上游固件的 `SpiLcdDisplay`，直接依赖 `Application` 和 LVGL，接入方式按 `docs/ARCHITECTURE.md` 第 6 节在实板上验证后再决定怎么落，避免先写一份以后要推翻的代码。
+参考项目的提交记录在 `firmware/UPSTREAM.json`。QMI8658 驱动 `qmi8658_motion.h` 放在板型目录，因为 IMU 型号和轴向是板级的。
+
+这些都是头文件，由 `firmware/scripts/build.sh` 加进小智 `main` 组件的 include 路径，不单独编成 ESP-IDF 组件，因为 `eye_display.h` 依赖 `main` 里的 `Application` 和 `SpiLcdDisplay`。
+
+## eye_display.h 与原文的差异
+
+- 小智 v2.6.0 的 `SetEmotion` 返回 `bool`。界面建好后一律返回 `true`，否则 `Application` 会再回落设一次 `neutral`。
+- 加了 `RemoveChatMessage`。v2.6.0 用它在 5 秒后撤掉开机唤醒词提示，只在当前字幕仍是那条提示时清空。
+- 情绪名查表改用 `mood_map.h`，配网、激活、出错有独立表情；查不到时仍按设备状态推导。
+- `SetStatus` 不再给状态加"宗主 · "前缀，也不再识别参考项目网关的"等待 Bot"状态。
+- 字幕滚动动画改用 LVGL 9.5 的 `lv_anim_set_reverse_*`，原文的 `playback` 名是 9.1 的旧别名。
 
 ## 情绪映射的取舍
 

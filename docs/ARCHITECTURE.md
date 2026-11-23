@@ -54,6 +54,8 @@ podone/
 │   ├── boards/
 │   │   ├── waveshare-1.75c/       首个板型：引脚、分区、sdkconfig、板级初始化
 │   │   └── _template/             新板型复制起点，只含清单不含可编译代码
+│   ├── patches/                   打在上游小智固件上的补丁，目前只有一个
+│   ├── UPSTREAM.json              上游小智固件与 zongzhu-bot 的提交
 │   └── scripts/                   构建与打包，输出按板型命名
 └── docs/
     ├── ARCHITECTURE.md            本文
@@ -62,7 +64,7 @@ podone/
 
 `server/` 与 `firmware/` 同仓，podone 是唯一主仓，原 `tokenone_xiaozhiserver` 已放弃。两边通过一份版本化的设备协议对接，协议字段在 `docs/` 单列一页维护，避免服务端和固件各写一份。固件构建产物和 `dependencies.lock` 进仓，`build/`、`sdkconfig` 本地产物、`managed_components/` 不进仓。
 
-这个布局允许以后把某个板型拆到独立仓库：`components/podone` 没有向上游固件目录内部打补丁，板型目录是自包含的 ESP-IDF 工程。前提是第 6 节的结论成立；若验证后必须改上游固件内部才能接入，再改为 vendor 整棵 `xiaozhi-esp32` 并记录分叉点。
+上游小智固件不进仓，构建时按 `firmware/UPSTREAM.json` 拉取，见第 6 节。`components/podone` 和板型目录不改上游文件，对上游只有一个 CMake 补丁，所以以后可以把某个板型拆到独立仓库。
 
 ## 5 服务端
 
@@ -99,12 +101,15 @@ podone/
 
 因此固件不从微雪 BSP 示例起手，而是基于小智固件的板型支持。微雪 v1.0.2 示例和 BSP 3.0.0 留作显示、触摸、电源、IMU、录音的对照与排错依据，不作为应用框架。
 
-接入方式二选一，在第一期第一步验证后定：
+接入方式（2026-11-23 阶段 2 定下，已上板验证）：上游不 vendor，也不当组件依赖，而是构建时克隆上游并打一个小补丁。
 
-1. 板型工程通过 ESP-IDF 组件依赖引用上游固件的 `main`，Podone 的改动只加不改。这是第 4 节目录结构的前提，优先验证。
-2. 若协议回调或显示初始化无法在不修改上游的情况下替换，则把上游固件 vendor 到 `firmware/vendor/xiaozhi-esp32/`，Podone 的改动集中在独立目录并在 `UPSTREAM.json` 记录分叉提交。
+- 原先设想的组件依赖走不通：小智的 `main` 是 ESP-IDF 的主组件，板级源码由 `main/CMakeLists.txt` 按 `BOARD_TYPE` 从 `main/boards/` 下 glob 进来，外部工程没法在不改它的前提下换掉板级源码。
+- 整棵 vendor 能用，但每次跟上游都要搬一遍几百个板型目录，而 Podone 实际只需要换板级源码。
+- 现在的做法：`firmware/scripts/build.sh` 按 `firmware/UPSTREAM.json` 的提交把上游拉到 `firmware/.upstream/`（不进仓），打上 `firmware/patches/xiaozhi-esp32-board-dir.patch`。这个补丁只改 `main/CMakeLists.txt`：环境变量 `PODONE_BOARD_DIR` 有值时，从那里取板级源码和 `config.json`，并把 `PODONE_INCLUDE_DIRS` 加进头文件路径。
+- 板型仍然选中上游的 Kconfig 板型符号（1.75C 是 `CONFIG_BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_75C`），这样字体、表情集、AEC 等依赖和官方变体一致。
+- 升级上游时改 `UPSTREAM.json` 的提交，再确认补丁还能打上。
 
-无论哪一种，表情与姿态代码都放在 `firmware/components/podone/`，不散落到板型目录。
+表情与姿态代码放在 `firmware/components/podone/`，不散落到板型目录。
 
 ### 与 zongzhu-bot 的关系
 
@@ -137,9 +142,9 @@ podone/
 
 ### 构建基线
 
-ESP-IDF v6.0.3，目标 `esp32s3`，上游为小智 v2.6.0（提交 `4de00ae`）。v5.5.5 仍装在 `~/esp/esp-idf`，只用于跑微雪示例，微雪 v1.0.2 示例是用它构建的。LVGL 版本由固件组件清单锁定后写入 `UPSTREAM.json`，不沿用微雪示例的 9.5.0 作为硬性要求，因为小智固件自带显示栈。
+ESP-IDF v6.0.3，目标 `esp32s3`，上游为小智 v2.6.0（提交 `4de00ae`），它锁定的 LVGL 是 9.5.0，已写入 `firmware/UPSTREAM.json`。v5.5.5 仍装在 `~/esp/esp-idf`，只用于跑微雪示例，微雪 v1.0.2 示例是用它构建的。
 
-zongzhu-bot 用 ESP-IDF 6.0.1 构建，和当前基线同属 6.0 系列，移植 `eye_display` 时仍要逐项核对 LVGL 绘制接口和 `sdkconfig` 项。
+zongzhu-bot 用 ESP-IDF 6.0.1 构建，和当前基线同属 6.0 系列。移植 `eye_display` 时改了几处接口：小智 v2.6.0 的 `SetEmotion` 返回 `bool`，新增了 `RemoveChatMessage`，LVGL 9.5 的动画回放改名为 `reverse`。完整差异见 `firmware/components/podone/README.md`。
 
 ## 7 设备协议
 
@@ -173,7 +178,7 @@ zongzhu-bot 用 ESP-IDF 6.0.1 构建，和当前基线同属 6.0 系列，移植
 | --- | --- | --- |
 | 0 基线 | 安装 ESP-IDF，用小智官方固件的 1.75C 变体连接 lab 服务端（2026-11-23 已在实板上跑通，见 HANDOFF） | 显示、触摸、录音、播报、唤醒在实板上确认，延迟基线按 reseller 方案第 7 节记录 |
 | 1 迁入 | 复制 `tokenone_xiaozhiserver` 到 `server/`，核对构建与 lab 部署，补 `UPSTREAM.json` | 迁入后的服务端与源仓库行为一致，密钥未进仓 |
-| 2 表情固件 | 建立 `firmware/` 目录与 1.75C 板型，接入表情、字幕、触摸和姿态 | 不连服务端时，触摸、倾斜、摇晃的反馈与参考项目一致 |
+| 2 表情固件 | 建立 `firmware/` 目录与 1.75C 板型，接入表情、字幕、触摸和姿态（2026-11-23 已上板，倾斜方向待确认，见板型 README） | 不连服务端时，触摸、倾斜、摇晃的反馈与参考项目一致 |
 | 3 链路接通 | 固件连接自有服务端，完成唤醒、对话、朗读，表情跟随状态 | 一轮问答全程走通，断线可重连 |
 | 4 Reseller | 按已有方案实施 Java 与 Python 的凭证传递 | 满足该方案第 9 节的验收，且第 3 阶段的硬件体验不回退 |
 
@@ -181,6 +186,6 @@ zongzhu-bot 用 ESP-IDF 6.0.1 构建，和当前基线同属 6.0 系列，移植
 
 ## 9 待确认
 
-1. 固件接入方式以第 6 节的验证结果为准，若必须 vendor 上游，第 4 节的目录图要改。
+1. 固件接入方式已定，见第 6 节。QMI8658 的轴向符号暂取 zongzhu-bot 的映射，倾斜跟随方向还要在实板上确认。
 2. 唤醒词、服务端地址的写入方式（编译期写入还是首启配网）本期未定，不影响目录结构和协议。
 3. 服务端情绪词表目前只覆盖回复文本中出现 emoji 的情况，覆盖范围在阶段 3 用实际对话验证。

@@ -1,0 +1,33 @@
+diff --git a/main/CMakeLists.txt b/main/CMakeLists.txt
+index 45204d6..fd67826 100644
+--- a/main/CMakeLists.txt
++++ b/main/CMakeLists.txt
+@@ -966,7 +966,16 @@ if(NOT BOARD_DIR AND NOT CMAKE_BUILD_EARLY_EXPANSION)
+     message(FATAL_ERROR "The selected board does not define BOARD_DIR")
+ endif()
+ 
+-set(BOARD_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_DIR}/config.json")
++# Podone: the board directory and shared components live outside this tree.
++# firmware/scripts/build.sh passes them in through the environment.
++set(BOARD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_DIR}")
++if(DEFINED ENV{PODONE_BOARD_DIR})
++    set(BOARD_ROOT "$ENV{PODONE_BOARD_DIR}")
++    list(APPEND INCLUDE_DIRS "${BOARD_ROOT}" $ENV{PODONE_INCLUDE_DIRS})
++    message(STATUS "Podone board: ${BOARD_ROOT}")
++endif()
++
++set(BOARD_CONFIG_FILE "${BOARD_ROOT}/config.json")
+ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${BOARD_CONFIG_FILE}")
+ 
+ # BOARD_TYPE and BOARD_MANUFACTURER are reported by the firmware.
+@@ -997,8 +1006,8 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION AND NOT BOARD_TYPE MATCHES "^[a-z0-9.-]+$")
+ endif()
+ 
+ file(GLOB BOARD_SOURCES
+-    ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_DIR}/*.cc
+-    ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_DIR}/*.c
++    ${BOARD_ROOT}/*.cc
++    ${BOARD_ROOT}/*.c
+ )
+ list(APPEND SOURCES ${BOARD_SOURCES})
+ 

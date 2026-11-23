@@ -15,3 +15,4 @@ docs/hardware/*/examples/*.zip
 docs/hardware/*/firmware/*.zip
 docs/hardware/*/firmware/*.bin
 docs/hardware/*/datasheets/*technical_reference_manual*.pdf
+.claude/settings.local.json

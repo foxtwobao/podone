@@ -1,0 +1,17 @@
+# waveshare-1.75c 的构建选项，叠加在小智上游的 sdkconfig.defaults 与 sdkconfig.defaults.esp32s3 之上。
+# 前三项与小智官方 config.json 中 1.75C 那一项相同；其余与阶段 0 用 scripts/build.py --language zh-CN 生成的一致。
+
+# 选中上游的 1.75C 板型符号：字体、表情集和 AEC 等 Kconfig 依赖它。板级源码改用本目录的 main/。
+CONFIG_BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_75C=y
+CONFIG_USE_WECHAT_MESSAGE_STYLE=n
+CONFIG_USE_DEVICE_AEC=y
+
+CONFIG_LANGUAGE_ZH_CN=y
+CONFIG_WAKE_WORD_DISABLED=n
+CONFIG_USE_ESP_WAKE_WORD=n
+CONFIG_USE_AFE_WAKE_WORD=y
+CONFIG_USE_CUSTOM_WAKE_WORD=n
+CONFIG_SR_WN_WN9_NIHAOXIAOZHI_TTS=y
+
+# 测试环境。设备不信任 Caddy 本地 CA，OTA 走 HTTP 入口。
+CONFIG_OTA_URL="http://pod.lab.home.arpa/xiaozhi/ota/"

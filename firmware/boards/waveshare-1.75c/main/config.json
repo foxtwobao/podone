@@ -1,0 +1,5 @@
+{
+    "manufacturer": "waveshare",
+    "type": "waveshare-1.75c",
+    "target": "esp32s3"
+}
