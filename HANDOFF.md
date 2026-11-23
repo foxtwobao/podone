@@ -36,7 +36,7 @@
 ### 待办
 
 1. 用真实账号在浏览器里走一遍：未登录打开绑定链接，经 IDONE 登录后回到绑定页，激活码已预填，绑定成功。这一步要先让浏览器能解析 `pod.lab.home.arpa`：要么在 Mac 的 `/etc/hosts` 加一条，要么等 OpenWrt 改好。
-2. OpenWrt 的 DNS 已改好（2026-11-23 验证）：路由器的 IPv4 和 IPv6 两个 DNS 都把各 lab 域名解析到 `192.168.31.160`，用这个地址访问各站点 HTTPS 都返回 200，设备 OTA、WebSocket 和登录跳转也都正常。还剩两件事：删掉 Mac `/etc/hosts` 里的 labstack 和 pod 测试条目；用局域网里的其他设备实际访问一次，浏览器要先导入 Caddy 根证书。
+2. OpenWrt 的 DNS 已改好（2026-11-23 验证）：路由器的 IPv4 和 IPv6 两个 DNS 都把各 lab 域名解析到 `192.168.31.160`，用这个地址访问各站点 HTTPS 都返回 200，设备 OTA、WebSocket 和登录跳转也都正常。Mac `/etc/hosts` 里的 labstack 和 pod 测试条目已经删掉，原文件备份在 `/etc/hosts.bak-podone-20261123`。删掉之后本机也走路由器 DNS，各站点仍然返回 200，podone 登录跳转也正常。还剩一件事：用局域网里的其他设备实际访问一次，浏览器要先导入 Caddy 根证书。
 3. 整机重启，确认 OrbStack、容器、Reseller 和 Caddy 都能自己起来。
 4. 板子识别后做阶段 0：先用 `esptool.py chip_id` 确认芯片，再烧小智官方固件，把 OTA 地址设成 `http://pod.lab.home.arpa/xiaozhi/ota/`。
 5. 4.5 区分测试和生产地址：生产地址还没给。
