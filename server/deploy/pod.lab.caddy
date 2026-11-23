@@ -1,0 +1,27 @@
+# podone 测试环境入口。Caddy 与 compose 在同一台 Mac 上，容器端口只绑 127.0.0.1。
+# 主 Caddyfile import 本文件；CA 沿用原 lab 的 Caddy 本地 CA，`server/.lab/java-cacerts` 已信任它。
+#
+# 路径分配（启用智控台时）：
+#   /xiaozhi/v1/*      设备 WebSocket，Python 8000
+#   /mcp/vision/*      视觉分析，Python 8003
+#   其余               web 容器 8002：管理端页面、/mobile/，以及 /xiaozhi/ 下的 manager-api（含 /xiaozhi/ota/）
+
+http://pod.lab.home.arpa {
+	redir https://{host}{uri} 308
+}
+
+pod.lab.home.arpa {
+	tls internal
+
+	# 不开 access log：登录回调的 query 含授权码。
+
+	handle /xiaozhi/v1/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle /mcp/vision/* {
+		reverse_proxy 127.0.0.1:8003
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8002
+	}
+}

@@ -1,11 +1,9 @@
 http://bot.lab.home.arpa {
-    bind 192.168.10.38
     redir https://{host}{uri} 308
 }
 
 bot.lab.home.arpa {
-    bind 192.168.10.38
     tls internal
     # 登录回调的 query 不进入 access log。
-    reverse_proxy 192.168.10.38:8002
+    reverse_proxy 127.0.0.1:8002
 }

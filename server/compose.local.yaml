@@ -1,4 +1,4 @@
-name: tokenone-xiaozhi
+name: podone
 services:
   server:
     image: ghcr.io/xinnan-tech/xiaozhi-esp32-server:server-base
@@ -23,7 +23,7 @@ services:
       start_period: 120s
       retries: 5
   web:
-    image: tokenone-xiaozhi-web:local
+    image: podone-web:local
     build:
       context: .
       dockerfile: Dockerfile-web
