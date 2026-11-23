@@ -4,6 +4,25 @@
 
 方案总览见 `docs/ARCHITECTURE.md`，本文只写方案之外的进度、决定和卡点。
 
+## 0 2026-11-23 第二次会话进展
+
+这次会话直接跑在用户的 Mac mini 上（`192.168.31.160`），第 3 节的沙盒限制不再适用。下一步计划见 `/Users/hulei/.claude/plans/handoff-md-adaptive-cocoa.md`。
+
+新决定：
+
+- 38 服务器退役。IDONE、New API、Reseller 和 podone 服务端都迁到这台 Mac，Caddy 也装在 Mac 上。其他项目以后另做计划。
+- 旧小智部署由 podone 取代，端口沿用 8000/8002/8003。
+- `docs/hardware/` 的大文件不进仓库，用 `fetch-large-files.sh` 下载，再按 `SHA256SUMS` 校验。
+- 路由器 DNS 由用户改：`*.lab.home.arpa` 指向 `192.168.31.160`。
+
+进展：
+
+- 4.1 建仓完成，首次提交 `d90264f`。`server/.git` 已删除，删除前的历史保存在仓库外的 `/Volumes/ext/Projects/podone-server-history.bundle`，已用 verify 校验。`models/` 下的 18 个已跟踪文件已拷回。上面提到的三份记录文件已改为 subtree 合并方式。
+- 4.2 激活页代码已写，**未编译、未提交**，因为 Mac 上没有 Node、Maven 和 JDK。改动包括：设备收到的文本改为 `{fronted_url}/#/bind?code=XXXXXX`，第二行仍是六位码；新增 `/bind` 页面；登录前要去的页面存进 `sessionStorage`，IDONE 回调后取回；401 跳登录时也带上当前页面。mobile 不改，手机打开的是 web 的 `/bind`。
+- 38 的迁移数据在 `/Volumes/ext/Migration/dev38-20261117/`，对照表见计划文件第 3 步。
+- ESP-IDF 安装和 lab 基础环境迁移已整理成两个独立会话的任务卡片，用户还没启动。
+- 板子 USB 仍然识别不到。
+
 ## 1 用户已确认的决定
 
 1. 圆屏交互效果按 `docs/preview/eye-preview.html` 通过。开机用思考，配网用困惑，激活用好奇，出错用难过，激活码六位连排，配网提示不受字幕模式影响。
