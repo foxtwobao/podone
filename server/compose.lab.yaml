@@ -1,5 +1,8 @@
 services:
   web:
+    # IDONE 和 Caddy 跑在同一台 Mac 上。不写这一项时，容器会沿用宿主 /etc/hosts 的 127.0.0.1，连到容器自己。
+    extra_hosts:
+      - "idone.lab.home.arpa:host-gateway"
     environment:
       JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/opt/lab/java-cacerts -Djavax.net.ssl.trustStorePassword=changeit
     volumes:
