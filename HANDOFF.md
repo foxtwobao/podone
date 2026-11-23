@@ -135,7 +135,7 @@
 
 ## 5 其他未决事项
 
-- 唤醒词定为"波波"（`CONFIG_CUSTOM_WAKE_WORD="bo bo"`，Multinet7），2026-11-23 起替换"你好小智"，实板还没验证。
+- 唤醒词定为"你好波波"（`CONFIG_CUSTOM_WAKE_WORD="ni hao bo bo"`，Multinet7，阈值 20），2026-11-23 起替换"你好小智"，实板还没验证。
 - Reseller 鉴权按 `server/docs/reseller-integration-plan.md` 实施，排在阶段 4，本次没有动。
 
 ## 6 本会话留下的临时状态

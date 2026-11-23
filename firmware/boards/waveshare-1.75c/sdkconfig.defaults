@@ -1,6 +1,6 @@
 # waveshare-1.75c 的构建选项，叠加在小智上游的 sdkconfig.defaults 与 sdkconfig.defaults.esp32s3 之上。
 # 前三项与小智官方 config.json 中 1.75C 那一项相同；其余与阶段 0 用 scripts/build.py --language zh-CN 生成的一致，
-# 唤醒词除外，改成自定义"波波"（Multinet7，拼音 bo bo）。
+# 唤醒词除外，改成自定义"你好波波"（Multinet7，拼音 ni hao bo bo）。
 
 # 选中上游的 1.75C 板型符号：字体、表情集和 AEC 等 Kconfig 依赖它。板级源码改用本目录的 main/。
 CONFIG_BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_75C=y
@@ -12,10 +12,9 @@ CONFIG_WAKE_WORD_DISABLED=n
 CONFIG_USE_ESP_WAKE_WORD=n
 CONFIG_USE_AFE_WAKE_WORD=n
 CONFIG_USE_CUSTOM_WAKE_WORD=y
-CONFIG_CUSTOM_WAKE_WORD="bo bo"
-CONFIG_CUSTOM_WAKE_WORD_DISPLAY="波波"
-# 双音节 "bo bo" 阈值不宜过低（0.20 易在人声背景误触发），从 0.35 起步便于实测微调
-CONFIG_CUSTOM_WAKE_WORD_THRESHOLD=35
+CONFIG_CUSTOM_WAKE_WORD="ni hao bo bo"
+CONFIG_CUSTOM_WAKE_WORD_DISPLAY="你好波波"
+CONFIG_CUSTOM_WAKE_WORD_THRESHOLD=20
 CONFIG_SR_MN_CN_MULTINET7_QUANT=y
 
 # 测试环境。设备不信任 Caddy 本地 CA，OTA 走 HTTP 入口。

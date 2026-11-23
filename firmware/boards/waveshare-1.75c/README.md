@@ -35,7 +35,7 @@ firmware/scripts/build.sh waveshare-1.75c
 firmware/scripts/build.sh waveshare-1.75c flash
 ```
 
-生产固件加 `--profile prod`，OTA 地址换成 `https://pod.agentone.work/xiaozhi/ota/`。唤醒词是自定义的"波波"，用 Multinet7 命令词识别，拼音 `bo bo`，阈值 20。
+生产固件加 `--profile prod`，OTA 地址换成 `https://pod.agentone.work/xiaozhi/ota/`。唤醒词是自定义的"你好波波"，用 Multinet7 命令词识别，拼音 `ni hao bo bo`，阈值 20。
 
 产物在 `firmware/build/waveshare-1.75c/`。`sdkconfig.defaults` 叠加在上游 `sdkconfig.defaults` 之上，选中上游的 1.75C 板型符号，所以字体、表情集和 AEC 这些 Kconfig 依赖和官方 1.75C 变体一样，生成的 `sdkconfig` 和阶段 0 的逐项相同。板级源码用的是本目录的 `main/`。接入方式见 `docs/ARCHITECTURE.md` 第 6 节。
 
