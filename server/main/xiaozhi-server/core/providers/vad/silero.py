@@ -24,11 +24,11 @@ class VADProvider(VADProviderBase):
         )
 
         threshold = config.get("threshold", "0.5")
-        threshold_low = config.get("threshold_low", "0.2")
+        threshold_low = config.get("threshold_low", "0.35")
         min_silence_duration_ms = config.get("min_silence_duration_ms", "1000")
 
         self.vad_threshold = float(threshold) if threshold else 0.5
-        self.vad_threshold_low = float(threshold_low) if threshold_low else 0.2
+        self.vad_threshold_low = float(threshold_low) if threshold_low else 0.35
 
         self.silence_threshold_ms = (
             int(min_silence_duration_ms) if min_silence_duration_ms else 1000

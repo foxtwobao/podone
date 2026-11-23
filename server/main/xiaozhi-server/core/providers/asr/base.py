@@ -72,8 +72,19 @@ class ASRProviderBase(ABC):
                 conn.asr_audio = conn.asr_audio[-10:]
                 return
 
-            # 自动模式下通过VAD检测到语音停止时触发识别
-            if conn.asr.interface_type != InterfaceType.STREAM and conn.client_voice_stop:
+            # 自动模式下通过VAD检测到语音停止时触发识别；
+            # 同时限制单段最长缓冲（约 20 秒 = 16000Hz * 2B * 20s），防止底噪令 VAD 长时间不断句拖死本地 ASR
+            max_utterance_bytes = 16000 * 2 * 20
+            buffered_bytes = sum(len(frame) for frame in conn.asr_audio)
+            force_stop = buffered_bytes >= max_utterance_bytes
+            if force_stop:
+                logger.bind(tag=TAG).warning(
+                    f"单段音频缓存达到上限({buffered_bytes} bytes)，强制截断并触发识别"
+                )
+
+            if conn.asr.interface_type != InterfaceType.STREAM and (
+                conn.client_voice_stop or force_stop
+            ):
                 # 直接使用asr_audio中的PCM数据
                 pcm_bytes = b"".join(conn.asr_audio)
                 # 检查是否有足够的音频数据（每帧1920字节，15帧约28800字节）
