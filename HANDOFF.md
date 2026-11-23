@@ -28,7 +28,7 @@
 | 激活页预填激活码 | 提交 `8c5c66a` | 设备收到的文本是 `https://pod.lab.home.arpa/#/bind?code=XXXXXX`，第二行是六位码；镜像构建时 `npm run build`、`mvn package` 都通过 |
 | podone 部署 | compose 项目 `podone`，Caddy 站点 `server/deploy/pod.lab.caddy`（已装到 `/opt/homebrew/etc/caddy/conf.d/pod.caddy`） | 四个容器健康检查通过。HTTPS 首页 200，HTTP 的 OTA 返回新格式的激活提示，WebSocket 握手 101，HTTP 访问其他路径 308 跳转 HTTPS，登录 302 跳到 IDONE 授权页，授权页 200 |
 | 旧小智数据 | podone 的 MySQL | 从 38 的导出恢复：30 张表，2 个用户、1 个智能体、1 台设备。`server.fronted_url`、`server.websocket`、`server.ota` 已改成 pod 域名 |
-| 阶段 2：表情固件 | `firmware/scripts/build.sh waveshare-1.75c`，板级源码 `firmware/boards/waveshare-1.75c/main/`，共用代码 `firmware/components/podone/` | 2026-11-23 实板验证：眼睛、触摸反应、摇晃晕眩、BOOT 长按切字幕都有日志佐证，语音对话照常；倾斜跟随方向还没单独确认。接入方式见 `ARCHITECTURE.md` 第 6 节 |
+| 阶段 2：表情固件 | `firmware/scripts/build.sh waveshare-1.75c`，板级源码 `firmware/boards/waveshare-1.75c/main/`，共用代码 `firmware/components/podone/` | 2026-11-23 实板验证：眼睛、触摸反应、摇晃晕眩、BOOT 长按切字幕都有日志佐证，语音对话照常，倾斜跟随方向也已确认。接入方式见 `ARCHITECTURE.md` 第 6 节 |
 | IDONE 回调 | IDONE 里 `admin/xiaozhi` 应用 | 新加 `https://pod.lab.home.arpa/xiaozhi/user/idone/callback`，bot 那条保留；改之前的行备份在 `server/.lab/backups/` |
 
 部署时踩到的两个坑，都已修复并提交：
@@ -42,7 +42,7 @@
 2. OpenWrt 的 DNS 已改好（2026-11-23 验证）：路由器的 IPv4 和 IPv6 两个 DNS 都把各 lab 域名解析到 `192.168.31.160`，用这个地址访问各站点 HTTPS 都返回 200，设备 OTA、WebSocket 和登录跳转也都正常。Mac `/etc/hosts` 里的 labstack 和 pod 测试条目已经删掉，原文件备份在 `/etc/hosts.bak-podone-20261123`。删掉之后本机也走路由器 DNS，各站点仍然返回 200，podone 登录跳转也正常。还剩一件事：用局域网里的其他设备实际访问一次，浏览器要先导入 Caddy 根证书。
 3. 整机重启，确认 OrbStack、容器、Reseller 和 Caddy 都能自己起来。
 4. 阶段 0 已跑通，还剩两项：唤醒词"你好小智"还没试；延迟基线还没按 reseller 方案第 7 节记录。
-5. 阶段 2 表情固件已上板。还剩：确认倾斜时眼睛往哪边动，方向反了就改 `firmware/boards/waveshare-1.75c/main/config.h` 里的 `QMI8658_SCREEN_X/Y`；Flash 按 16 MB 配置，要用满 32 MB 得换分区表。下一步是阶段 3，表情跟随服务端下发的情绪。
+5. 阶段 2 表情固件已在实板上达标。Flash 按 16 MB 配置，要用满 32 MB 得换分区表。下一步是阶段 3，表情跟随服务端下发的情绪。
 
 阶段 0 中途踩到的坑：
 
@@ -136,7 +136,6 @@
 ## 5 其他未决事项
 
 - 唤醒词的默认值，不沿用"宗主"。
-- IMU 轴向符号暂取 zongzhu-bot 的映射，摇晃检测已经正常，倾斜方向要看屏幕确认。
 - Reseller 鉴权按 `server/docs/reseller-integration-plan.md` 实施，排在阶段 4，本次没有动。
 
 ## 6 本会话留下的临时状态

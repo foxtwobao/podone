@@ -8,7 +8,7 @@
 - 屏幕 CO5300，1.75 寸圆屏，466×466，QSPI，RGB565。
 - 触摸 CST9217。
 - 音频 ES8311 播放、ES7210 四通道录音，采样率 24000 Hz，开启参考信号回采。
-- IMU QMI8658，I²C 地址 0x6B，INT1 接 GPIO21。屏幕坐标映射暂取 zongzhu-bot 的 `SCREEN_X = accel[1]`、`SCREEN_Y = accel[0]`，BOARD.md 只写了"轴方向见原理图第 2 页"，符号需要实板确认。
+- IMU QMI8658，I²C 地址 0x6B，INT1 接 GPIO21。屏幕坐标映射沿用 zongzhu-bot 的 `SCREEN_X = accel[1]`、`SCREEN_Y = accel[0]`，2026-11-23 实板确认倾斜时眼睛跟随方向正确。
 
 引脚核对了两份来源：本仓库 `docs/hardware/ESP32-S3-Touch-AMOLED-1.75C/hardware/BOARD.md`，以及小智官方固件 `waveshare/esp32-s3-touch-amoled-1.75/config.h` 中 1.75C 的分支，两者逐项一致。同一目录下非 C 版的 MCLK、屏幕复位、触摸复位引脚不同，不能混用。数值见 `config.h`，每项注明了来源。
 
@@ -66,4 +66,4 @@ python scripts/build.py waveshare/esp32-s3-touch-amoled-1.75 -c podone.json --na
 - BOOT 长按：`Subtitle mode -> 1`。
 - 对话：从唤醒到问答一轮走通，服务端回复了文本，状态在 listening 和 speaking 间切换。
 
-倾斜跟随不打日志，眼睛跟随方向是否正确只能看屏幕，用户还没有单独确认。待机时绘制帧率 5 到 9 fps，动画时 20 多 fps，逻辑循环约 34 Hz。
+倾斜跟随不打日志，用户看屏幕确认眼睛跟随方向正确。待机时绘制帧率 5 到 9 fps，动画时 20 多 fps，逻辑循环约 34 Hz。
