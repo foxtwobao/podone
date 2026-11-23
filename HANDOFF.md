@@ -6,22 +6,40 @@
 
 ## 0 2026-11-23 第二次会话进展
 
-这次会话直接跑在用户的 Mac mini 上（`192.168.31.160`），第 3 节的沙盒限制不再适用。下一步计划见 `/Users/hulei/.claude/plans/handoff-md-adaptive-cocoa.md`。
+这次会话直接跑在用户的 Mac mini 上（`192.168.31.160`），第 3 节的沙盒限制不再适用。计划见 `/Users/hulei/.claude/plans/handoff-md-adaptive-cocoa.md`。
 
 新决定：
 
 - 38 服务器退役。IDONE、New API、Reseller 和 podone 服务端都迁到这台 Mac，Caddy 也装在 Mac 上。其他项目以后另做计划。
 - 旧小智部署由 podone 取代，端口沿用 8000/8002/8003。
 - `docs/hardware/` 的大文件不进仓库，用 `fetch-large-files.sh` 下载，再按 `SHA256SUMS` 校验。
+- 设备走单独的 HTTP 入口，因为设备不信任 Caddy 本地 CA。浏览器只走 HTTPS。
 - 路由器 DNS 由用户改：`*.lab.home.arpa` 指向 `192.168.31.160`。
 
-进展：
+### 已完成
 
-- 4.1 建仓完成，首次提交 `d90264f`。`server/.git` 已删除，删除前的历史保存在仓库外的 `/Volumes/ext/Projects/podone-server-history.bundle`，已用 verify 校验。`models/` 下的 18 个已跟踪文件已拷回。上面提到的三份记录文件已改为 subtree 合并方式。
-- 4.2 激活页代码已写，**未编译、未提交**，因为 Mac 上没有 Node、Maven 和 JDK。改动包括：设备收到的文本改为 `{fronted_url}/#/bind?code=XXXXXX`，第二行仍是六位码；新增 `/bind` 页面；登录前要去的页面存进 `sessionStorage`，IDONE 回调后取回；401 跳登录时也带上当前页面。mobile 不改，手机打开的是 web 的 `/bind`。
-- 38 的迁移数据在 `/Volumes/ext/Migration/dev38-20261117/`，对照表见计划文件第 3 步。
-- ESP-IDF 安装和 lab 基础环境迁移已整理成两个独立会话的任务卡片，用户还没启动。
-- 板子 USB 仍然识别不到。
+| 内容 | 位置 | 验证情况 |
+| --- | --- | --- |
+| 建仓 | 首次提交 `d90264f` | `server/.git` 已删除，删除前的历史存在仓库外的 `/Volumes/ext/Projects/podone-server-history.bundle`，已 verify；`models/` 的 18 个已跟踪文件已拷回 |
+| ESP-IDF v5.5.5 | `~/esp/esp-idf`，脚本在 `firmware/scripts/` | `idf.py --version` 正常，微雪 `02_lvgl_demo_v9` 编译通过；板子 USB 仍识别不到 |
+| lab 服务迁到 Mac | `/Volumes/ext/Projects/labstack/`（不进仓） | 由另一个会话完成。各 lab 域名不加 `-k` 走 HTTPS 都返回 200；整机重启后能否自动恢复还没测 |
+| 激活页预填激活码 | 提交 `8c5c66a` | 设备收到的文本是 `https://pod.lab.home.arpa/#/bind?code=XXXXXX`，第二行是六位码；镜像构建时 `npm run build`、`mvn package` 都通过 |
+| podone 部署 | compose 项目 `podone`，Caddy 站点 `server/deploy/pod.lab.caddy`（已装到 `/opt/homebrew/etc/caddy/conf.d/pod.caddy`） | 四个容器健康检查通过。HTTPS 首页 200，HTTP 的 OTA 返回新格式的激活提示，WebSocket 握手 101，HTTP 访问其他路径 308 跳转 HTTPS，登录 302 跳到 IDONE 授权页，授权页 200 |
+| 旧小智数据 | podone 的 MySQL | 从 38 的导出恢复：30 张表，2 个用户、1 个智能体、1 台设备。`server.fronted_url`、`server.websocket`、`server.ota` 已改成 pod 域名 |
+| IDONE 回调 | IDONE 里 `admin/xiaozhi` 应用 | 新加 `https://pod.lab.home.arpa/xiaozhi/user/idone/callback`，bot 那条保留；改之前的行备份在 `server/.lab/backups/` |
+
+部署时踩到的两个坑，都已修复并提交：
+
+- 上游 `server-base` 镜像带的是 mcp 2.x，和仓库锁定的 `mcp==1.22.0` 不兼容，server 一直重启。现在改为按本仓库的 requirements 本地构建（`4b5fb96`）。第一次构建要 20 分钟左右，慢在 OrbStack 容器出网，换 pip 源没用。
+- 宿主 `/etc/hosts` 里 `idone.lab.home.arpa` 写的是 127.0.0.1，容器会继承这条，结果连到容器自己。现在 `compose.lab.yaml` 用 `extra_hosts` 把它指到 `host-gateway`（`686d4c8`）。
+
+### 待办
+
+1. 用真实账号在浏览器里走一遍：未登录打开绑定链接，经 IDONE 登录后回到绑定页，激活码已预填，绑定成功。这一步要先让浏览器能解析 `pod.lab.home.arpa`：要么在 Mac 的 `/etc/hosts` 加一条，要么等 OpenWrt 改好。
+2. OpenWrt 改完 DNS 后，删掉 Mac `/etc/hosts` 里的 labstack 测试条目，再从局域网其他设备访问一次。
+3. 整机重启，确认 OrbStack、容器、Reseller 和 Caddy 都能自己起来。
+4. 板子识别后做阶段 0：先用 `esptool.py chip_id` 确认芯片，再烧小智官方固件，把 OTA 地址设成 `http://pod.lab.home.arpa/xiaozhi/ota/`。
+5. 4.5 区分测试和生产地址：生产地址还没给。
 
 ## 1 用户已确认的决定
 
