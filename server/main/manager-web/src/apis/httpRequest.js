@@ -1,6 +1,7 @@
 import Fly from 'flyio/dist/npm/fly';
 import store from '../store/index';
 import Constant from '../utils/constant';
+import router from '../router';
 import { goToPage, isNotNull, showDanger, showWarning } from '../utils/index';
 import i18n from '../i18n/index';
 
@@ -124,7 +125,10 @@ function httpHandlerError(info, failCallback, networkFailCallback) {
             return networkError
         } else if (info.data.code === 401) {
             store.commit('clearAuth');
-            goToPage(Constant.PAGE.LOGIN, true);
+            // 带上当前页面，登录后回来（例如设备激活链接里的激活码）
+            const current = router.currentRoute;
+            const redirect = current && current.name !== 'login' ? current.fullPath : undefined;
+            goToPage({ path: Constant.PAGE.LOGIN, query: redirect ? { redirect } : {} }, true);
             return true
         } else {
             // 直接使用后端返回的国际化消息

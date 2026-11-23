@@ -39,6 +39,12 @@ const routes = [
       return import('../views/home.vue')
     }
   },
+  // 设备屏幕上的激活地址，带 code 参数
+  {
+    path: '/bind',
+    name: 'BindDevice',
+    component: () => import('../views/BindDevice.vue')
+  },
   {
     path: '/auth/idone/callback',
     name: 'IdoneCallback',
@@ -220,7 +226,7 @@ VueRouter.prototype.push = function push(location) {
 }
 
 // 需要登录才能访问的路由
-const protectedRoutes = ['home', 'RoleConfig', 'DeviceManagement', 'UserManagement', 'ModelConfig', 'KnowledgeBaseManagement', 'KnowledgeFileUpload', 'AddressBookManagement']
+const protectedRoutes = ['home', 'BindDevice', 'RoleConfig', 'DeviceManagement', 'UserManagement', 'ModelConfig', 'KnowledgeBaseManagement', 'KnowledgeFileUpload', 'AddressBookManagement']
 
 // 路由守卫
 router.beforeEach((to, from, next) => {

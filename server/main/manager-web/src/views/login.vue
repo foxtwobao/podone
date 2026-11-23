@@ -93,6 +93,7 @@ import Api from "@/apis/api";
 import VersionFooter from "@/components/VersionFooter.vue";
 import i18n, { changeLanguage } from "@/i18n";
 import { authUrl } from "@/apis/auth";
+import { saveLoginRedirect } from "@/utils/loginRedirect";
 
 export default {
   name: "login",
@@ -183,6 +184,7 @@ export default {
       if (!this.ready || this.loading) return;
       try {
         this.loading = true;
+        saveLoginRedirect(this.$route.query.redirect);
         window.location.assign(authUrl('idone/login'));
       } catch (error) {
         this.error = error.message;

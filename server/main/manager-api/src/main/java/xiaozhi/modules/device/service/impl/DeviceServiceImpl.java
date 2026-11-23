@@ -440,6 +440,15 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
         return RedisKeys.getOtaDeviceActivationInfo(safeDeviceId);
     }
 
+    /**
+     * 设备屏幕显示的激活提示。第一行是预填激活码的绑定页地址，第二行保留六位码供手输。
+     */
+    private String buildActivationMessage(String activationCode) {
+        String frontedUrl = StringUtils.removeEnd(
+                StringUtils.trimToEmpty(sysParamsService.getValue(Constant.SERVER_FRONTED_URL, true)), "/");
+        return frontedUrl + "/#/bind?code=" + activationCode + "\n" + activationCode;
+    }
+
     public DeviceReportRespDTO.Activation buildActivation(String deviceId, DeviceReportReqDTO deviceReport) {
         DeviceReportRespDTO.Activation code = new DeviceReportRespDTO.Activation();
 
@@ -447,14 +456,12 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
 
         if (StringUtils.isNotBlank(cachedCode)) {
             code.setCode(cachedCode);
-            String frontedUrl = sysParamsService.getValue(Constant.SERVER_FRONTED_URL, true);
-            code.setMessage(frontedUrl + "\n" + cachedCode);
+            code.setMessage(buildActivationMessage(cachedCode));
             code.setChallenge(deviceId);
         } else {
             String newCode = RandomUtil.randomNumbers(6);
             code.setCode(newCode);
-            String frontedUrl = sysParamsService.getValue(Constant.SERVER_FRONTED_URL, true);
-            code.setMessage(frontedUrl + "\n" + newCode);
+            code.setMessage(buildActivationMessage(newCode));
             code.setChallenge(deviceId);
 
             Map<String, Object> dataMap = new HashMap<>();

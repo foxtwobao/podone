@@ -11,6 +11,7 @@
 <script>
 import { exchangeIdoneToken } from '@/apis/auth';
 import Api from '@/apis/api';
+import { takeLoginRedirect } from '@/utils/loginRedirect';
 
 export default {
   name: 'IdoneCallback',
@@ -22,7 +23,7 @@ export default {
       this.$store.commit('setToken', JSON.stringify(token));
       Api.user.getUserInfo(({ data }) => {
         this.$store.commit('setUserInfo', data.data);
-        this.$router.replace('/home');
+        this.$router.replace(takeLoginRedirect('/home'));
       }, error => {
         this.error = error.data?.msg || '用户信息获取失败，请重新登录';
         this.$store.commit('clearAuth');
