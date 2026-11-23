@@ -1,7 +1,12 @@
 name: podone
 services:
   server:
-    image: ghcr.io/xinnan-tech/xiaozhi-esp32-server:server-base
+    # 依赖按本仓库 requirements.txt 构建。上游 server-base 标签会随上游更新，
+    # 2026-10 的版本带 mcp 2.x，与这里锁定的 mcp==1.22.0 不兼容。
+    image: podone-server-base:local
+    build:
+      context: .
+      dockerfile: Dockerfile-server-base
     working_dir: /opt/xiaozhi-esp32-server
     command: ["python", "app.py"]
     restart: unless-stopped
