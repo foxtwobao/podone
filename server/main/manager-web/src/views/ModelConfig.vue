@@ -616,6 +616,8 @@ export default {
 .nav-panel {
   min-width: 242px;
   height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
   border-right: 1px solid #ebeef5;
   background: linear-gradient(
       120deg,
@@ -632,6 +634,7 @@ export default {
 
 .nav-panel .el-menu-item {
   height: 50px;
+  flex-shrink: 0;
   background: #e9f0ff;
   line-height: 50px;
   border-radius: 4px 0 0 4px !important;

@@ -10,9 +10,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import xiaozhi.common.constant.Constant;
+import xiaozhi.common.exception.ErrorCode;
+import xiaozhi.common.exception.RenException;
+import xiaozhi.common.page.TokenDTO;
 import xiaozhi.common.user.UserDetail;
 import xiaozhi.common.utils.JsonUtils;
 import xiaozhi.common.utils.Result;
@@ -29,6 +34,17 @@ public class LoginController {
     private final SysUserTokenService sysUserTokenService;
     private final SysParamsService sysParamsService;
     private final IdoneProperties idone;
+
+    @PostMapping("/refresh")
+    @Operation(summary = "刷新token：用旧token换新token")
+    public Result<TokenDTO> refresh(HttpServletRequest request) {
+        String authorization = request.getHeader(Constant.AUTHORIZATION);
+        if (StringUtils.isBlank(authorization) || !authorization.startsWith("Bearer ")) {
+            throw new RenException(ErrorCode.UNAUTHORIZED);
+        }
+        String oldToken = authorization.replace("Bearer ", "");
+        return sysUserTokenService.refreshToken(oldToken);
+    }
 
     @GetMapping("/info")
     public Result<UserDetail> info() {

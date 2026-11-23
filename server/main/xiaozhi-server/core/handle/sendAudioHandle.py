@@ -12,7 +12,7 @@ from core.providers.tts.dto.dto import SentenceType
 from core.utils.audioRateController import AudioRateController
 
 TAG = __name__
-# 音频帧时长（毫秒）
+# 音频帧时长（毫秒），与 Opus 编码 60ms/帧对齐
 AUDIO_FRAME_DURATION = 60
 # 预缓冲包数量，直接发送以吸收弱网抖动（设备解码队列容量 20 包 / 1200ms）
 PRE_BUFFER_COUNT = 12

@@ -83,6 +83,7 @@ public class ShiroConfig {
         filterMap.put("/v3/api-docs/**", "anon");
         filterMap.put("/doc.html", "anon");
         filterMap.put("/favicon.ico", "anon");
+        filterMap.put("/user/refresh", "anon");
         filterMap.put("/user/pub-config", "anon");
         filterMap.put("/user/idone/login", "anon");
         filterMap.put("/user/idone/callback", "anon");
