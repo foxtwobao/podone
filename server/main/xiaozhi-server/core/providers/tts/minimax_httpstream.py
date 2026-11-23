@@ -82,8 +82,10 @@ class TTSProvider(TTSProviderBase):
         }
         self.audio_file_type = defult_audio_setting.get("format", "pcm")
 
-        # PCM缓冲区
+        # PCM缓冲区与复用长连接 Session（避免每句重做 TCP+TLS 握手导致句间断续）
         self.pcm_buffer = bytearray()
+        self._http_session = requests.Session()
+        self._http_session.headers.update(self.header)
 
     async def open_audio_channels(self, conn):
         """初始化音频通道,并根据conn.sample_rate更新配置"""
@@ -98,12 +100,22 @@ class TTSProvider(TTSProviderBase):
         while not self.conn.stop_event.is_set():
             try:
                 message = self.tts_text_queue.get(timeout=1)
+                if self.conn.client_abort:
+                    logger.bind(tag=TAG).info("收到打断信息，终止TTS文本处理线程")
+                    continue
+                if message.sentence_id != self.conn.sentence_id:
+                    continue
                 if message.sentence_type == SentenceType.FIRST:
                     # 初始化参数
+                    self.current_sentence_id = message.sentence_id
                     self.tts_stop_request = False
                     self.processed_chars = 0
                     self.tts_text_buff = []
+                    self.is_first_sentence = True
+                    self.tts_audio_first_sentence = True
                     self.before_stop_play_files.clear()
+                    if hasattr(self, "opus_encoder") and self.opus_encoder:
+                        self.opus_encoder.reset_state()
                 elif ContentType.TEXT == message.content_type:
                     self.tts_text_buff.append(message.content_detail)
                     segment_text = self._get_segment_text()
@@ -153,7 +165,7 @@ class TTSProvider(TTSProviderBase):
             if self._correct_words_pattern:
                 text = self._correct_words_pattern.sub(lambda m: self.correct_words[m.group(0)], text)
             try:
-                asyncio.run(self.text_to_speak(text, is_last))
+                self._text_to_speak_sync(text, is_last)
             except Exception as e:
                 logger.bind(tag=TAG).warning(
                     f"语音生成失败{5 - max_repeat_time + 1}次: {original_text}，错误: {e}"
@@ -174,7 +186,11 @@ class TTSProvider(TTSProviderBase):
             return None
 
     async def text_to_speak(self, text, is_last):
-        """流式处理TTS音频，每句只推送一次音频列表"""
+        """兼容父类抽象签名，委托给复用 keep-alive 的同步流式实现"""
+        self._text_to_speak_sync(text, is_last)
+
+    def _text_to_speak_sync(self, text, is_last):
+        """复用 HTTP keep-alive 长连接流式处理 TTS 音频，消除每句重连抖动"""
         payload = {
             "model": self.model,
             "text": text,
@@ -195,100 +211,104 @@ class TTSProvider(TTSProviderBase):
             / 1000
             * 2
         )  # 16-bit = 2 bytes
+        sentence_id = getattr(self, "current_sentence_id", None)
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.api_url,
-                    headers=self.header,
-                    data=json.dumps(payload),
-                    timeout=self.tts_timeout,
-                ) as resp:
+            with self._http_session.post(
+                self.api_url,
+                data=json.dumps(payload),
+                timeout=self.tts_timeout,
+                stream=True,
+            ) as resp:
+                if resp.status_code != 200:
+                    logger.bind(tag=TAG).error(
+                        f"TTS请求失败: {resp.status_code}, {resp.text}"
+                    )
+                    self.tts_audio_queue.put((SentenceType.LAST, [], None, sentence_id))
+                    return
 
-                    if resp.status != 200:
-                        logger.bind(tag=TAG).error(
-                            f"TTS请求失败: {resp.status}, {await resp.text()}"
-                        )
-                        self.tts_audio_queue.put((SentenceType.LAST, [], None))
+                self.pcm_buffer.clear()
+                self.tts_audio_queue.put((SentenceType.FIRST, [], text, sentence_id))
+
+                # 处理音频流数据
+                buffer = b""
+                for chunk in resp.iter_content(chunk_size=None):
+                    if self.conn.client_abort:
+                        self.pcm_buffer.clear()
                         return
+                    if not chunk:
+                        continue
 
-                    self.pcm_buffer.clear()
-                    self.tts_audio_queue.put((SentenceType.FIRST, [], text))
+                    buffer += chunk
+                    while True:
+                        # 查找数据块分隔符
+                        header_pos = buffer.find(b"data: ")
+                        if header_pos == -1:
+                            break
 
-                    # 处理音频流数据
-                    buffer = b""
-                    async for chunk in resp.content.iter_any():
-                        if not chunk:
+                        end_pos = buffer.find(b"\n\n", header_pos)
+                        if end_pos == -1:
+                            break
+
+                        # 提取单个完整JSON块
+                        json_str = buffer[header_pos + 6 : end_pos].decode("utf-8")
+                        buffer = buffer[end_pos + 2 :]
+
+                        try:
+                            data = json.loads(json_str)
+
+                            # 检查业务层错误
+                            base_resp = data.get("base_resp", {})
+                            status_code = base_resp.get("status_code", 0)
+                            if status_code != 0:
+                                status_msg = base_resp.get("status_msg", "未知错误")
+                                logger.bind(tag=TAG).error(
+                                    f"TTS请求失败, 错误码:{status_code}, 错误消息:{status_msg}"
+                                )
+                                self.tts_audio_queue.put((SentenceType.LAST, [], None, sentence_id))
+                                return
+
+                            status = data.get("data", {}).get("status", 1)
+                            audio_hex = data.get("data", {}).get("audio")
+
+                            # 仅处理status=1的有效音频块 忽略status=2的结束汇总块
+                            if status == 1 and audio_hex:
+                                pcm_data = bytes.fromhex(audio_hex)
+                                self.pcm_buffer.extend(pcm_data)
+
+                        except json.JSONDecodeError as e:
+                            logger.bind(tag=TAG).error(f"JSON解析失败: {e}")
                             continue
 
-                        buffer += chunk
-                        while True:
-                            # 查找数据块分隔符
-                            header_pos = buffer.find(b"data: ")
-                            if header_pos == -1:
-                                break
+                    while len(self.pcm_buffer) >= frame_bytes:
+                        frame = bytes(self.pcm_buffer[:frame_bytes])
+                        del self.pcm_buffer[:frame_bytes]
 
-                            end_pos = buffer.find(b"\n\n", header_pos)
-                            if end_pos == -1:
-                                break
-
-                            # 提取单个完整JSON块
-                            json_str = buffer[header_pos + 6 : end_pos].decode("utf-8")
-                            buffer = buffer[end_pos + 2 :]
-
-                            try:
-                                data = json.loads(json_str)
-
-                                # 检查业务层错误
-                                base_resp = data.get("base_resp", {})
-                                status_code = base_resp.get("status_code", 0)
-                                if status_code != 0:
-                                    status_msg = base_resp.get("status_msg", "未知错误")
-                                    logger.bind(tag=TAG).error(
-                                        f"TTS请求失败, 错误码:{status_code}, 错误消息:{status_msg}"
-                                    )
-                                    self.tts_audio_queue.put((SentenceType.LAST, [], None))
-                                    return
-
-                                status = data.get("data", {}).get("status", 1)
-                                audio_hex = data.get("data", {}).get("audio")
-
-                                # 仅处理status=1的有效音频块 忽略status=2的结束汇总块
-                                if status == 1 and audio_hex:
-                                    pcm_data = bytes.fromhex(audio_hex)
-                                    self.pcm_buffer.extend(pcm_data)
-
-                            except json.JSONDecodeError as e:
-                                logger.bind(tag=TAG).error(f"JSON解析失败: {e}")
-                                continue
-
-                        while len(self.pcm_buffer) >= frame_bytes:
-                            frame = bytes(self.pcm_buffer[:frame_bytes])
-                            del self.pcm_buffer[:frame_bytes]
-
-                            self.opus_encoder.encode_pcm_to_opus_stream(
-                                frame, end_of_stream=False, callback=self.handle_opus
-                            )
-
-                    # flush 剩余不足一帧的数据
-                    if self.pcm_buffer:
                         self.opus_encoder.encode_pcm_to_opus_stream(
-                            bytes(self.pcm_buffer),
-                            end_of_stream=True,
-                            callback=self.handle_opus,
+                            frame, end_of_stream=False, callback=self.handle_opus
                         )
-                        self.pcm_buffer.clear()
 
-                    # 如果是最后一段，输出音频获取完毕
-                    if is_last:
-                        self._process_before_stop_play_files()
+                # flush 剩余不足一帧的数据
+                if self.pcm_buffer:
+                    self.opus_encoder.encode_pcm_to_opus_stream(
+                        bytes(self.pcm_buffer),
+                        end_of_stream=True,
+                        callback=self.handle_opus,
+                    )
+                    self.pcm_buffer.clear()
+
+                # 如果是最后一段，输出音频获取完毕
+                if is_last:
+                    self._process_before_stop_play_files()
 
         except Exception as e:
             logger.bind(tag=TAG).error(f"TTS请求异常: {e}")
-            self.tts_audio_queue.put((SentenceType.LAST, [], None))
+            self.tts_audio_queue.put((SentenceType.LAST, [], None, sentence_id))
 
     async def close(self):
         """资源清理"""
         await super().close()
+        if hasattr(self, "_http_session") and self._http_session:
+            self._http_session.close()
         if hasattr(self, "opus_encoder"):
             self.opus_encoder.close()
 

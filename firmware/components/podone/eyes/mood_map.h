@@ -26,6 +26,7 @@ inline constexpr MoodAlias kMoodAliases[] = {
     {"speaking", eyes::Mood::Speaking},   {"happy", eyes::Mood::Happy},
     {"laughing", eyes::Mood::Happy},      {"loving", eyes::Mood::Happy},
     {"singing", eyes::Mood::Happy},       {"winking", eyes::Mood::Happy},
+    {"delicious", eyes::Mood::Happy},     {"kissy", eyes::Mood::Happy},
     {"excited", eyes::Mood::Excited},     {"dancing", eyes::Mood::Excited},
     {"rapper", eyes::Mood::Excited},      {"basketball", eyes::Mood::Excited},
     {"cool", eyes::Mood::Excited},        {"curious", eyes::Mood::Curious},
@@ -45,6 +46,19 @@ inline constexpr MoodAlias kMoodAliases[] = {
     {"cancel", eyes::Mood::Sad},              // 一般错误、下载或升级失败
     {"cloud_off", eyes::Mood::Sad},           // 连不上服务端
 };
+
+inline bool IsAlertEmotion(const char* name) {
+    if (!name)
+        return false;
+    static constexpr const char* kAlertNames[] = {
+        "gear", "link", "cloud_download", "download", "warning", "cancel", "cloud_off",
+    };
+    for (const char* a : kAlertNames) {
+        if (std::strcmp(name, a) == 0)
+            return true;
+    }
+    return false;
+}
 
 inline eyes::Mood MoodForEmotion(const char* name, eyes::Mood fallback) {
     if (!name)

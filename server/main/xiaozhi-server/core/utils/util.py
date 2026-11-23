@@ -247,7 +247,10 @@ def audio_to_data_stream(
 
 
 async def audio_to_data(
-    audio_file_path: str, is_opus: bool = True, use_cache: bool = True
+    audio_file_path: str,
+    is_opus: bool = True,
+    use_cache: bool = True,
+    sample_rate: int = 16000,
 ) -> list[bytes]:
     """
     将音频文件转换为Opus/PCM编码的帧列表
@@ -255,12 +258,13 @@ async def audio_to_data(
         audio_file_path: 音频文件路径
         is_opus: 是否进行Opus编码
         use_cache: 是否使用缓存
+        sample_rate: 目标采样率（默认16000，应与连接下行采样率一致）
     """
     from core.utils.cache.manager import cache_manager
     from core.utils.cache.config import CacheType
 
-    # 生成缓存键，包含文件路径和编码类型
-    cache_key = f"{audio_file_path}:{is_opus}"
+    # 生成缓存键，包含文件路径、编码类型和采样率
+    cache_key = f"{audio_file_path}:{is_opus}:{sample_rate}"
 
     # 尝试从缓存获取结果
     if use_cache:
@@ -278,18 +282,18 @@ async def audio_to_data(
             audio_file_path, format=file_type, parameters=["-nostdin"]
         )
 
-        # 转换为单声道/16kHz采样率/16位小端编码（确保与编码器匹配）
-        audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
+        # 转换为单声道/目标采样率/16位小端编码（确保与编码器匹配）
+        audio = audio.set_channels(1).set_frame_rate(sample_rate).set_sample_width(2)
 
         # 获取原始PCM数据（16位小端）
         raw_data = audio.raw_data
 
         # 初始化Opus编码器
-        encoder = opuslib_next.Encoder(16000, 1, opuslib_next.APPLICATION_AUDIO)
+        encoder = opuslib_next.Encoder(sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
 
         # 编码参数
         frame_duration = 60  # 60ms per frame
-        frame_size = int(16000 * frame_duration / 1000)  # 960 samples/frame
+        frame_size = int(sample_rate * frame_duration / 1000)  # samples/frame
 
         datas = []
         # 按帧处理所有音频数据（包括最后一帧可能补零）

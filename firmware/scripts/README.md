@@ -2,7 +2,7 @@
 
 ## 构建
 
-- `build.sh <board-id> [flash]`：构建一个板型，加 `flash` 时构建完接着烧录。串口默认 `/dev/cu.usbmodem21101`，可以用 `PORT` 改。脚本按 `firmware/UPSTREAM.json` 把上游小智固件拉到 `firmware/.upstream/xiaozhi-esp32` 并切到记录的提交，打上 `firmware/patches/` 的补丁（已打过的跳过），然后用 `idf.py -B firmware/build/<board-id>` 构建。ESP-IDF 默认取 `~/esp/esp-idf-v6.0.3`，可以用 `IDF_PATH_DIR` 改。
+- `build.sh [--profile lab|prod] <board-id> [flash]`：构建一个板型，加 `flash` 时构建完接着烧录。`--profile` 默认 lab，选板型目录的 `sdkconfig.defaults`；prod 再叠加 `sdkconfig.defaults.prod`，目前只把 OTA 地址换成生产域名。串口默认 `/dev/cu.usbmodem21101`，可以用 `PORT` 改。脚本按 `firmware/UPSTREAM.json` 把上游小智固件拉到 `firmware/.upstream/xiaozhi-esp32` 并切到记录的提交，打上 `firmware/patches/` 的补丁（已打过的跳过），然后用 `idf.py -B firmware/build/<board-id>` 构建。ESP-IDF 默认取 `~/esp/esp-idf-v6.0.3`，可以用 `IDF_PATH_DIR` 改。
 
 烧完后芯片停在下载模式，要拔插一次 USB 才会启动。
 

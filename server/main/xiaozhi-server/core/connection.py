@@ -239,7 +239,7 @@ class ConnectionHandler:
             # 启动AEC缓存清理任务
             self._aec_cache_cleanup_task = asyncio.create_task(self._check_aec_cache_expiry())
 
-            self.welcome_msg = self.config["xiaozhi"]
+            self.welcome_msg = copy.deepcopy(self.config["xiaozhi"])
             self.welcome_msg["session_id"] = self.session_id
 
             # 从配置中读取采样率
@@ -1164,6 +1164,32 @@ class ConnectionHandler:
         tool_calls_list = []  # 格式: [{"id": "", "name": "", "arguments": ""}]
         content_arguments = ""
         emotion_flag = True
+        emotion_buffer = ""
+        _EMOTION_BUFFER_MAX_CHARS = 12
+        _EMOTION_BREAK_CHARS = set("，。！？,.!?;；\n")
+
+        def _feed_emotion_text(chunk: str, final: bool = False):
+            nonlocal emotion_flag, emotion_buffer
+            if not emotion_flag or not (self.features or {}).get("emoji", True):
+                return
+            if chunk:
+                emotion_buffer += chunk
+            stripped = emotion_buffer.strip()
+            if not stripped:
+                return
+            matched = textUtils.extract_emotion(stripped)
+            if (
+                matched is not None
+                or final
+                or len(stripped) >= _EMOTION_BUFFER_MAX_CHARS
+                or any(ch in _EMOTION_BREAK_CHARS for ch in stripped)
+            ):
+                asyncio.run_coroutine_threadsafe(
+                    textUtils.get_emotion(self, stripped),
+                    self.loop,
+                )
+                emotion_flag = False
+
         try:
             for response in llm_responses:
                 if self.client_abort:
@@ -1199,6 +1225,7 @@ class ConnectionHandler:
                                     new_part = self._clean_response_garbage(new_part)
                                     if new_part:
                                         tc["_da_sent"] = safe_end
+                                        _feed_emotion_text(new_part)
                                         self.tts.tts_text_queue.put(
                                             TTSMessageDTO(
                                                 sentence_id=current_sentence_id,
@@ -1210,17 +1237,9 @@ class ConnectionHandler:
                 else:
                     content = response
 
-                # 在llm回复中获取情绪表情，一轮对话只在开头获取一次
-                if emotion_flag and content is not None and content.strip():
-                    if (self.features or {}).get("emoji", True):
-                        asyncio.run_coroutine_threadsafe(
-                            textUtils.get_emotion(self, content),
-                            self.loop,
-                        )
-                    emotion_flag = False
-
                 if content is not None and len(content) > 0:
                     if not tool_call_flag:
+                        _feed_emotion_text(content)
                         response_message.append(content)
                         self.tts.tts_text_queue.put(
                             TTSMessageDTO(
@@ -1230,6 +1249,8 @@ class ConnectionHandler:
                                 content_detail=content,
                             )
                         )
+            if not self.client_abort and not tool_call_flag:
+                _feed_emotion_text("", final=True)
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"LLM stream processing error: {e}")
             self.tts.tts_text_queue.put(
@@ -1297,6 +1318,7 @@ class ConnectionHandler:
                             if remaining:
                                 remaining = self._clean_response_garbage(remaining)
                                 if remaining:
+                                    _feed_emotion_text(remaining, final=True)
                                     self.tts.tts_text_queue.put(
                                         TTSMessageDTO(
                                             sentence_id=current_sentence_id,
@@ -1305,6 +1327,8 @@ class ConnectionHandler:
                                             content_detail=remaining,
                                         )
                                     )
+                            else:
+                                _feed_emotion_text("", final=True)
                             # 写入对话历史
                             da_response = self._clean_response_garbage(da_response)
                             self.tts.store_tts_text(current_sentence_id, da_response)

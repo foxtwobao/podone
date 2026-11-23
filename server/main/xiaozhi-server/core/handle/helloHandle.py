@@ -46,7 +46,11 @@ async def handleHelloMessage(conn: "ConnectionHandler", msg_json):
         format = audio_params.get("format")
         conn.logger.bind(tag=TAG).debug(f"客户端音频格式: {format}")
         conn.audio_format = format
-        conn.welcome_msg["audio_params"] = audio_params
+        conn.client_audio_params = audio_params
+        # 客户端 hello.audio_params 描述的是上行（如 16000Hz），下行音频参数应保留服务端配置（如 24000Hz），
+        # 仅在客户端声明非 opus 格式时同步 format，避免覆盖 sample_rate/frame_duration。
+        if format and isinstance(conn.welcome_msg.get("audio_params"), dict):
+            conn.welcome_msg["audio_params"]["format"] = format
     features = msg_json.get("features")
     if features:
         conn.logger.bind(tag=TAG).debug(f"客户端特性: {features}")
@@ -104,8 +108,10 @@ async def checkWakeupWords(conn: "ConnectionHandler", text):
             "text": "我在这里哦！",
         }
 
-    # 获取音频数据
-    opus_packets = await audio_to_data(response.get("file_path"), use_cache=False)
+    # 获取音频数据（按当前连接下行采样率编码，避免与服务端 hello 声明不一致）
+    opus_packets = await audio_to_data(
+        response.get("file_path"), use_cache=False, sample_rate=conn.sample_rate
+    )
     # 播放唤醒词回复
     conn.client_abort = False
 

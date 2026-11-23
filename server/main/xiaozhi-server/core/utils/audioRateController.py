@@ -56,9 +56,13 @@ class AudioRateController:
             elapsed_since_empty = (time.monotonic() - self._last_queue_empty_time) * 1000
             # 只有间隔超过1帧时长，才认为是真正的"暂停恢复"
             if elapsed_since_empty >= self.interval_ms:
-                self.start_timestamp = time.monotonic() - (self.play_position / 1000)
+                # 恢复时允许立刻补发最多 4 帧（240ms）重建设备端抖动缓冲
+                burst_ms = min(elapsed_since_empty, 4 * self.interval_ms)
+                self.start_timestamp = (
+                    time.monotonic() - (self.play_position + burst_ms) / 1000
+                )
                 self.logger.bind(tag=TAG).debug(
-                    f"队列从空恢复，重置时间戳，当前播放位置: {self.play_position}ms，间隔: {elapsed_since_empty:.0f}ms"
+                    f"队列从空恢复，重置时间戳，当前播放位置: {self.play_position}ms，间隔: {elapsed_since_empty:.0f}ms，补发缓冲: {burst_ms:.0f}ms"
                 )
 
         self.queue.append(("audio", opus_packet))

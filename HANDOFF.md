@@ -51,7 +51,7 @@
 - 服务端本地语音识别 SenseVoiceSmall 缺 `model.pt`（936 MB，被 git 忽略）。缺了它 FunASR 照样报告初始化成功，但识别结果全是乱码。已从原仓库拷回 `server/main/xiaozhi-server/models/SenseVoiceSmall/model.pt`，SHA-256 `833ca2dc…`。新部署时要先放好这个文件。
 - 天气插件用的是上游自带的公共 key，认证失败，要换成自己的。
 - server 运行时会改写 `config/assets/wakeup_words/` 下的唤醒回复音频，git 会显示它被修改，不要提交。
-6. 4.5 区分测试和生产地址：生产地址还没给。
+6. 4.5 区分测试和生产地址：生产地址是 `https://pod.agentone.work`。`firmware/scripts/build.sh --profile prod` 叠加 `sdkconfig.defaults.prod`，把 OTA 地址换成 `https://pod.agentone.work/xiaozhi/ota/`。域名还没有 DNS 记录，生产固件还没烧过。
 
 ## 1 用户已确认的决定
 
@@ -135,7 +135,7 @@
 
 ## 5 其他未决事项
 
-- 唤醒词的默认值，不沿用"宗主"。
+- 唤醒词定为"波波"（`CONFIG_CUSTOM_WAKE_WORD="bo bo"`，Multinet7），2026-11-23 起替换"你好小智"，实板还没验证。
 - Reseller 鉴权按 `server/docs/reseller-integration-plan.md` 实施，排在阶段 4，本次没有动。
 
 ## 6 本会话留下的临时状态

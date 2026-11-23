@@ -17,21 +17,24 @@ static void Expect(bool ok, const char* what) {
 }
 
 int main() {
-    // 服务端 EMOJI_MAP 的全部取值都要有去处：要么映射到表情，要么明确回落。
+    // 服务端 EMOJI_MAP 的全部非 neutral 取值都要有明确映射。
     const char* server_emotions[] = {"funny", "crying", "angry", "sad", "loving", "surprised",
                                      "shocked", "thinking", "relaxed", "sleepy", "silly",
                                      "confused", "happy", "laughing", "embarrassed",
-                                     "winking", "cool", "confident"};
-    for (const char* name : server_emotions)
+                                     "winking", "cool", "delicious", "kissy", "confident"};
+    for (const char* name : server_emotions) {
         Expect(podone::MoodForEmotion(name, Mood::Count) != Mood::Count, name);
+        Expect(!podone::IsAlertEmotion(name), name);
+    }
 
-    // 这几个服务端取值没有对应画法，按设备状态推导。
-    for (const char* name : {"neutral", "delicious", "kissy"})
-        Expect(podone::MoodForEmotion(name, Mood::Idle) == Mood::Idle, name);
+    // neutral 按设备状态推导。
+    Expect(podone::MoodForEmotion("neutral", Mood::Idle) == Mood::Idle, "neutral");
 
-    // 上游 Alert 情绪与预览一致。
+    // 上游 Alert 情绪与预览一致，且被识别为 Alert 情绪。
     Expect(podone::MoodForEmotion("gear", Mood::Idle) == Mood::Confused, "gear");
     Expect(podone::MoodForEmotion("link", Mood::Idle) == Mood::Curious, "link");
+    for (const char* name : {"gear", "link", "warning", "cancel", "cloud_off", "download", "cloud_download"})
+        Expect(podone::IsAlertEmotion(name), name);
     for (const char* name : {"warning", "cancel", "cloud_off"})
         Expect(podone::MoodForEmotion(name, Mood::Idle) == Mood::Sad, name);
     for (const char* name : {"download", "cloud_download"})

@@ -14,8 +14,8 @@ from core.utils.audioRateController import AudioRateController
 TAG = __name__
 # 音频帧时长（毫秒）
 AUDIO_FRAME_DURATION = 60
-# 预缓冲包数量，直接发送以减少延迟
-PRE_BUFFER_COUNT = 5
+# 预缓冲包数量，直接发送以吸收弱网抖动（设备解码队列容量 20 包 / 1200ms）
+PRE_BUFFER_COUNT = 12
 
 
 async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text, sentence_id=None):
@@ -74,8 +74,12 @@ async def _wait_for_audio_completion(conn: "ConnectionHandler"):
             # 自定义节奏：等待最后帧在客户端播放完成
             playback_time = 2 * rate_controller.interval_ms / 1000.0
         else:
-            # 默认节奏：前 N 帧预缓冲已直接发出，需要等待它们播放完成
-            playback_time = (PRE_BUFFER_COUNT + 2) * rate_controller.interval_ms / 1000.0
+            # 默认节奏：前 N 帧预缓冲已直接发出，按实际预缓冲帧数等待它们播放完成
+            sent_count = getattr(conn, "audio_flow_control", {}).get(
+                "packet_count", PRE_BUFFER_COUNT
+            )
+            buffered_count = min(sent_count, PRE_BUFFER_COUNT)
+            playback_time = (buffered_count + 2) * rate_controller.interval_ms / 1000.0
         await asyncio.sleep(playback_time)
 
         conn.logger.bind(tag=TAG).debug("音频发送完成")

@@ -30,7 +30,58 @@
 #include "eye_display.h"
 #include "qmi8658_motion.h"
 
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+
 #define TAG "PodoneWaveshare175c"
+
+// Wraps BoxAudioCodec to compute lock-free mic/speaker RMS levels for the
+// zero-text voice-mouth visualizer without modifying upstream audio code.
+class PodoneAudioCodec : public BoxAudioCodec {
+public:
+    using BoxAudioCodec::BoxAudioCodec;
+
+    void SetLevelCallback(std::function<void(float, float)> cb) { on_levels_ = std::move(cb); }
+
+    bool InputData(std::vector<int16_t>& data) override {
+        if (!BoxAudioCodec::InputData(data))
+            return false;
+        in_rms_.store(ComputeRms(data), std::memory_order_relaxed);
+        if (on_levels_)
+            on_levels_(in_rms_.load(std::memory_order_relaxed),
+                       out_rms_.load(std::memory_order_relaxed));
+        return true;
+    }
+
+    void OutputData(std::vector<int16_t>& data) override {
+        out_rms_.store(ComputeRms(data), std::memory_order_relaxed);
+        if (on_levels_)
+            on_levels_(in_rms_.load(std::memory_order_relaxed),
+                       out_rms_.load(std::memory_order_relaxed));
+        BoxAudioCodec::OutputData(data);
+    }
+
+private:
+    std::atomic<float> in_rms_{0.0f}, out_rms_{0.0f};
+    std::function<void(float, float)> on_levels_;
+
+    static float ComputeRms(const std::vector<int16_t>& pcm) {
+        if (pcm.empty())
+            return 0.0f;
+        uint64_t sum_sq = 0;
+        const size_t step = pcm.size() > 256 ? 4 : 1;
+        size_t count = 0;
+        for (size_t i = 0; i < pcm.size(); i += step) {
+            const int32_t s = pcm[i];
+            sum_sq += static_cast<uint64_t>(s * s);
+            ++count;
+        }
+        const float rms = std::sqrt(static_cast<float>(sum_sq) / std::max<size_t>(1, count));
+        // Normalize ~9000 PCM RMS to 1.0 for responsive visual dynamics.
+        return std::min(1.0f, rms / 9000.0f);
+    }
+};
 
 class Pmic : public Axp2101 {
 public:
@@ -155,6 +206,7 @@ private:
     CustomBacklight* backlight_;
     PowerSaveTimer* power_save_timer_;
     Qmi8658Motion* motion_ = nullptr;
+    int saved_volume_ = 70;
 
     void InitializePowerSaveTimer() {
         power_save_timer_ = new PowerSaveTimer(-1, 60, 300);
@@ -209,10 +261,10 @@ private:
             }
             app.ToggleChatState();
         });
-        // 长按切换字幕：完整、简洁、关闭，存进 NVS。
+        // 长按呼出/关闭纯图标环形快捷盘。
         boot_button_.OnLongPress([this]() {
             power_save_timer_->WakeUp();
-            display_->ShowNotification(display_->CycleSubtitleMode(), 2000);
+            display_->ToggleQuickRing();
         });
 
 #if CONFIG_USE_DEVICE_AEC
@@ -299,6 +351,46 @@ private:
         lvgl_port_add_touch(&touch_cfg);
         ESP_LOGI(TAG, "Touch panel initialized successfully");
         display_->OnTouch([this]() { power_save_timer_->WakeUp(); });
+        display_->OnChatToggle([]() {
+            auto& app = Application::GetInstance();
+            if (app.GetDeviceState() != kDeviceStateStarting)
+                app.ToggleChatState();
+        });
+        display_->OnMuteToggle([this]() {
+            auto codec = GetAudioCodec();
+            const int cur = codec->output_volume();
+            if (cur > 0) {
+                saved_volume_ = cur;
+                codec->SetOutputVolume(0);
+            } else {
+                codec->SetOutputVolume(saved_volume_ > 0 ? saved_volume_ : 70);
+            }
+            display_->UpdateStatusBar(true);
+        });
+        display_->OnVolumeStep([this]() {
+            auto codec = GetAudioCodec();
+            int next = ((codec->output_volume() / 20) * 20) + 20;
+            if (next > 100)
+                next = 20;
+            saved_volume_ = next;
+            codec->SetOutputVolume(next);
+            display_->UpdateStatusBar(true);
+        });
+        display_->OnBrightnessStep([this]() {
+            const uint8_t cur = backlight_->brightness();
+            const uint8_t next = cur < 45 ? 65 : (cur < 85 ? 100 : 25);
+            backlight_->SetBrightness(next, true);
+        });
+        display_->OnSleepRequest([this](bool sleep) {
+            if (sleep) {
+                display_->SetPowerSaveMode(true);
+                backlight_->SetBrightness(18);
+            } else {
+                power_save_timer_->WakeUp();
+                display_->SetPowerSaveMode(false);
+                backlight_->RestoreBrightness();
+            }
+        });
     }
 
     // 倾斜带动眼神，左右摇晃触发晕眩。IMU 读取在独立任务里，回调只写原子量。
@@ -354,7 +446,10 @@ public:
     }
 
     virtual AudioCodec* GetAudioCodec() override {
-        static BoxAudioCodec audio_codec(
+        // 1.75C 原理图在 ES8311 -> NS4150B 之间串有 150K 衰减电阻（R26/R28），
+        // 用等效 pa_voltage=42.0f 给 ES8311 DAC 补 +22.1 dB 硬件增益（100% -> 0xEB），
+        // 对齐出厂固件的响度同时保留余量避免破音。
+        static PodoneAudioCodec audio_codec(
             i2c_bus_, 
             AUDIO_INPUT_SAMPLE_RATE, 
             AUDIO_OUTPUT_SAMPLE_RATE,
@@ -366,7 +461,18 @@ public:
             AUDIO_CODEC_PA_PIN, 
             AUDIO_CODEC_ES8311_ADDR, 
             AUDIO_CODEC_ES7210_ADDR, 
-            AUDIO_INPUT_REFERENCE);
+            AUDIO_INPUT_REFERENCE,
+            30.0f,
+            -1,
+            0.0f,
+            42.0f);
+        static bool wired = false;
+        if (!wired && display_) {
+            wired = true;
+            audio_codec.SetLevelCallback([this](float in_rms, float out_rms) {
+                display_->SetAudioLevels(in_rms, out_rms);
+            });
+        }
         return &audio_codec;
     }
 
