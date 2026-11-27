@@ -1,0 +1,260 @@
+name: Publish Docker Hub (amd64)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "server/**"
+      - ".github/workflows/publish-dockerhub.yml"
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Components to build and push"
+        type: choice
+        default: all
+        options:
+          - all
+          - server
+          - web
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-dockerhub-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  server-base:
+    name: Build & push server-base (amd64)
+    if: github.event_name != 'workflow_dispatch' || inputs.component == 'all' || inputs.component == 'server'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+      REPOSITORY_NAME: ${{ github.event.repository.name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Docker Hub credentials
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DOCKERHUB_USERNAME" || -z "$DOCKERHUB_TOKEN" ]]; then
+            echo '::error::Missing DOCKERHUB_USERNAME or DOCKERHUB_TOKEN in repository settings.'
+            exit 1
+          fi
+          image="${DOCKERHUB_IMAGE:-${DOCKERHUB_USERNAME,,}/${REPOSITORY_NAME,,}}"
+          echo "IMAGE=${image,,}" >> "$GITHUB_ENV"
+
+      - name: Free disk space for Python dependencies
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost
+          df -h
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=server-base,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short,prefix=server-base_sha-
+
+      - name: Build and push server-base image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          file: server/Dockerfile-server-base
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            PIP_INDEX_URL=https://pypi.org/simple
+            PIP_TRUSTED_HOST=none
+          cache-from: type=gha,scope=podone-server-base-amd64
+          cache-to: type=gha,mode=min,scope=podone-server-base-amd64
+
+      - name: Write build summary
+        env:
+          IMAGE_TAGS: ${{ steps.metadata.outputs.tags }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo '### server-base (linux/amd64)'
+            echo '```text'
+            echo "$IMAGE_TAGS"
+            echo "$IMAGE_DIGEST"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  server:
+    name: Build & push server (amd64)
+    needs: server-base
+    if: github.event_name != 'workflow_dispatch' || inputs.component == 'all' || inputs.component == 'server'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+      REPOSITORY_NAME: ${{ github.event.repository.name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve target image name
+        run: |
+          set -euo pipefail
+          image="${DOCKERHUB_IMAGE:-${DOCKERHUB_USERNAME,,}/${REPOSITORY_NAME,,}}"
+          echo "IMAGE=${image,,}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=server_latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},prefix=server_
+            type=sha,format=short,prefix=server_sha-
+
+      - name: Build and push server image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          file: server/Dockerfile-server
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            SERVER_BASE_IMAGE=${{ env.IMAGE }}@${{ needs.server-base.outputs.digest }}
+
+      - name: Write build summary
+        env:
+          IMAGE_TAGS: ${{ steps.metadata.outputs.tags }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo '### server (linux/amd64)'
+            echo '```text'
+            echo "$IMAGE_TAGS"
+            echo "$IMAGE_DIGEST"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  web:
+    name: Build & push web (amd64)
+    if: github.event_name != 'workflow_dispatch' || inputs.component == 'all' || inputs.component == 'web'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+      REPOSITORY_NAME: ${{ github.event.repository.name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Docker Hub credentials
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DOCKERHUB_USERNAME" || -z "$DOCKERHUB_TOKEN" ]]; then
+            echo '::error::Missing DOCKERHUB_USERNAME or DOCKERHUB_TOKEN in repository settings.'
+            exit 1
+          fi
+          image="${DOCKERHUB_IMAGE:-${DOCKERHUB_USERNAME,,}/${REPOSITORY_NAME,,}}"
+          echo "IMAGE=${image,,}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=web_latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},prefix=web_
+            type=sha,format=short,prefix=web_sha-
+
+      - name: Build and push web image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          file: server/Dockerfile-web
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            NPM_REGISTRY=https://registry.npmjs.org
+          cache-from: type=gha,scope=podone-web-amd64
+          cache-to: type=gha,mode=max,scope=podone-web-amd64
+
+      - name: Write build summary
+        env:
+          IMAGE_TAGS: ${{ steps.metadata.outputs.tags }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo '### web (linux/amd64)'
+            echo '```text'
+            echo "$IMAGE_TAGS"
+            echo "$IMAGE_DIGEST"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
