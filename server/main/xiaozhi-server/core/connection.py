@@ -34,7 +34,6 @@ from core.utils.dialogue import Message, Dialogue
 from core.providers.asr.dto.dto import InterfaceType
 from core.handle.textHandle import handleTextMessage
 from core.providers.tools.unified_tool_handler import UnifiedToolHandler
-from plugins_func.loadplugins import auto_import_modules
 from plugins_func.register import Action, ActionResponse, all_function_registry, module_func_map
 from core.auth import AuthenticationError
 from config.config_loader import get_private_config_from_api
@@ -49,7 +48,6 @@ from core.utils import textUtils
 
 TAG = __name__
 
-auto_import_modules("plugins_func.functions")
 
 
 class TTSException(RuntimeError):
@@ -100,6 +98,11 @@ class ConnectionHandler:
         self.bind_prompt_interval = 60  # 绑定提示播放间隔(秒)
 
         self.read_config_from_api = self.config.get("read_config_from_api", False)
+        self.peripheral = None
+        if self.config.get("botone", {}).get("url"):
+            from core.providers.llm.botone.session import PeripheralSession
+
+            self.peripheral = PeripheralSession(self)
 
         self.websocket: websockets.ServerConnection | None = None
         self.headers = None
@@ -127,8 +130,8 @@ class ConnectionHandler:
         self.report_queue = queue.Queue()
         self.report_thread = None
         # 未来可以通过修改此处，调节asr的上报和tts的上报，目前默认都开启
-        self.report_asr_enable = self.read_config_from_api
-        self.report_tts_enable = self.read_config_from_api
+        self.report_asr_enable = self.read_config_from_api and self.peripheral is None
+        self.report_tts_enable = self.report_asr_enable
 
         # 依赖的组件
         self.vad = None
@@ -214,11 +217,10 @@ class ConnectionHandler:
                 self.client_ip = real_ip.split(",")[0].strip()
             else:
                 self.client_ip = ws.remote_address[0]
-            self.logger.bind(tag=TAG).info(
-                f"{self.client_ip} conn - Headers: {self.headers}"
-            )
-
             self.device_id = self.headers.get("device-id", None)
+            self.logger.bind(tag=TAG).info(
+                f"{self.client_ip} conn - Device-ID: {self.device_id}"
+            )
 
             # 认证通过,继续处理
             self.websocket = ws
@@ -277,6 +279,9 @@ class ConnectionHandler:
 
     async def _save_and_close(self, ws):
         """保存记忆并关闭连接"""
+        if self.peripheral:
+            await self.close(ws)
+            return
         try:
             # 守护线程1：独立生成标题（不依赖记忆模型）
             # 仅在服务端开启 chat_history 上报时才触发标题生成，
@@ -347,6 +352,15 @@ class ConnectionHandler:
 
     async def _route_message(self, message):
         """消息路由"""
+        if self.peripheral and isinstance(message, str):
+            try:
+                decoded = json.loads(message)
+            except ValueError:
+                decoded = None
+            if isinstance(decoded, dict) and decoded.get("type") == "hello":
+                await handleTextMessage(self, message)
+                return
+
         # 检查是否已经获取到真实的绑定状态
         if not self.bind_completed_event.is_set():
             # 还没有获取到真实状态，等待直到获取到真实状态或超时
@@ -793,6 +807,15 @@ class ConnectionHandler:
     async def _background_initialize(self):
         """在后台初始化配置和组件（完全不阻塞主循环）"""
         try:
+            if self.peripheral:
+                self.tts = DefaultTTS(self.config)
+                await self.tts.open_audio_channels(self)
+                self.vad = self._vad
+                self.asr = self._asr
+                await self.asr.open_audio_channels(self)
+                await self.peripheral.initialize()
+                self.bind_completed_event.set()
+                return
             # 异步获取差异化配置
             await self._initialize_private_config_async()
             # 在线程池中初始化组件
@@ -1595,6 +1618,8 @@ class ConnectionHandler:
 
     async def close(self, ws=None):
         """资源清理方法"""
+        if self.peripheral:
+            await self.peripheral.close()
         try:
             # 清理 VAD 连接资源
             if (
@@ -1774,6 +1799,11 @@ class ConnectionHandler:
         """检查连接超时"""
         try:
             while not self.stop_event.is_set():
+                # A bound Pod stays subscribed while its device WebSocket is online.
+                if self.peripheral and self.peripheral.owner:
+                    await self.peripheral.check_idle()
+                    await asyncio.sleep(10)
+                    continue
                 last_activity_time = self.last_activity_time
                 if self.need_bind:
                     last_activity_time = self.first_activity_time

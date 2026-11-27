@@ -48,6 +48,9 @@ public:
         if (!BoxAudioCodec::InputData(data))
             return false;
         in_rms_.store(ComputeRms(data), std::memory_order_relaxed);
+        if (esp_timer_get_time() - last_out_us_.load(std::memory_order_relaxed) > 60000) {
+            out_rms_.store(0.0f, std::memory_order_relaxed);
+        }
         if (on_levels_)
             on_levels_(in_rms_.load(std::memory_order_relaxed),
                        out_rms_.load(std::memory_order_relaxed));
@@ -55,15 +58,19 @@ public:
     }
 
     void OutputData(std::vector<int16_t>& data) override {
-        out_rms_.store(ComputeRms(data), std::memory_order_relaxed);
+        const float rms = ComputeRms(data);
+        out_rms_.store(rms, std::memory_order_relaxed);
+        if (rms > 0.01f) {
+            last_out_us_.store(esp_timer_get_time(), std::memory_order_relaxed);
+        }
         if (on_levels_)
-            on_levels_(in_rms_.load(std::memory_order_relaxed),
-                       out_rms_.load(std::memory_order_relaxed));
+            on_levels_(in_rms_.load(std::memory_order_relaxed), rms);
         BoxAudioCodec::OutputData(data);
     }
 
 private:
     std::atomic<float> in_rms_{0.0f}, out_rms_{0.0f};
+    std::atomic<int64_t> last_out_us_{0};
     std::function<void(float, float)> on_levels_;
 
     static float ComputeRms(const std::vector<int16_t>& pcm) {
@@ -212,12 +219,15 @@ private:
         power_save_timer_ = new PowerSaveTimer(-1, 60, 300);
         power_save_timer_->OnEnterSleepMode([this]() {
             GetDisplay()->SetPowerSaveMode(true);
-            GetBacklight()->SetBrightness(20); });
+            GetBacklight()->SetBrightness(0); });
         power_save_timer_->OnExitSleepMode([this]() {
             GetDisplay()->SetPowerSaveMode(false);
             GetBacklight()->RestoreBrightness(); });
-        power_save_timer_->OnShutdownRequest([this](){ 
-            pmic_->PowerOff(); });
+        power_save_timer_->OnShutdownRequest([this]() {
+            if (!Application::GetInstance().HasOnlineStandby() && pmic_->IsDischarging()) {
+                pmic_->PowerOff();
+            }
+        });
         power_save_timer_->SetEnabled(true);
     }
 
@@ -384,7 +394,7 @@ private:
         display_->OnSleepRequest([this](bool sleep) {
             if (sleep) {
                 display_->SetPowerSaveMode(true);
-                backlight_->SetBrightness(18);
+                backlight_->SetBrightness(0);
             } else {
                 power_save_timer_->WakeUp();
                 display_->SetPowerSaveMode(false);
@@ -485,22 +495,22 @@ public:
     }
 
     virtual bool GetBatteryLevel(int &level, bool &charging, bool &discharging) override {
-        static bool last_discharging = false;
         charging = pmic_->IsCharging();
         discharging = pmic_->IsDischarging();
-        if (discharging != last_discharging)
-        {
-            power_save_timer_->SetEnabled(discharging);
-            last_discharging = discharging;
-        }
 
         level = pmic_->GetBatteryLevel();
         return true;
     }
 
+    bool KeepWebsocketInStandby() const override { return true; }
+
     virtual void SetPowerSaveLevel(PowerSaveLevel level) override {
         if (level != PowerSaveLevel::LOW_POWER) {
             power_save_timer_->WakeUp();
+            if (display_->ScreenSleeping()) {
+                display_->SetPowerSaveMode(false);
+                backlight_->RestoreBrightness();
+            }
         }
         WifiBoard::SetPowerSaveLevel(level);
     }

@@ -8,7 +8,8 @@ TAG = __name__
 
 
 class SimpleHttpServer:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, peripheral_sessions=None):
+        self.peripheral_sessions = peripheral_sessions
         self.config = config
         self.logger = setup_logging()
         self.ota_handler = OTAHandler(config)
@@ -41,6 +42,12 @@ class SimpleHttpServer:
 
             if port:
                 app = web.Application()
+                if self.config.get("botone", {}).get("url") and self.peripheral_sessions is not None:
+                    from core.providers.llm.botone.device_tools import mount_device_tools
+                    mount_device_tools(app, self.peripheral_sessions, self.config["botone"])
+                if self.peripheral_sessions is not None:
+                    from core.providers.llm.botone.status_api import mount_status_api
+                    mount_status_api(app, self.peripheral_sessions, self.config)
 
                 if not read_config_from_api:
                     # 如果没有开启智控台，只是单模块运行，就需要再添加简单OTA接口，用于下发websocket接口

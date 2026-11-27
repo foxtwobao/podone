@@ -133,10 +133,13 @@
 
 测试地址 `https://pod.lab.home.arpa/`，生产地址待用户给出。要定的是用编译期配置切换（例如两份 `sdkconfig.defaults`，或者构建脚本传参），还是在设备上首次配网时选择。依赖 4.3 先跑通 OTA 路径。
 
-## 5 其他未决事项
+## 5 其他未决事项与新架构决定（2026-11-24 更新）
 
 - 唤醒词定为"你好波波"（`CONFIG_CUSTOM_WAKE_WORD="ni hao bo bo"`，Multinet7，阈值 20），2026-11-23 起替换"你好小智"，实板还没验证。
-- Reseller 鉴权按 `server/docs/reseller-integration-plan.md` 实施，排在阶段 4，本次没有动。
+- **阶段 4 架构重大更新（2026-11-24）**：确定将 Podone 作为隔壁 **Botone**（`/Volumes/ext/Projects/botone`）的物理语音外设接入，完整方案已写入 [`docs/BOTONE_INTEGRATION.md`](docs/BOTONE_INTEGRATION.md)，并同步更新了 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)：
+  - **不再在 Podone 内独立开发 Reseller 授权流与多模型适配**（原 `server/docs/reseller-integration-plan.md` 冻结/被取代）。
+  - **Botone 接管全部 LLM 能力與计费**：首次接入时，Botone 基于共享的 IDONE `(idone_issuer, idone_subject)` 身份，在用户默认 Space 下幂等初始化专属语音 Bot「波波」（基于轻量 Pi Runtime，绑定最快模型、`thinkingLevel: "off"`、禁用自身沙箱电脑工具、开启 `manageOtherBots: true`，提示词强制首字符输出情绪 Emoji 并用简短口语回复）。
+  - **多用户、多设备下零公共付费 Key**：Podone 本地仅运行免费离线 `SileroVAD` 与 `SenseVoiceSmall` ASR；每轮对话由 Botone 调用一次 Reseller `ensure` 获取该用户的个人 TokenONE Key，在运行 Pi LLM 的同时将本轮临时 Key 透传给 `xiaozhi-server` 调用 TokenONE 网关流式 TTS，彻底取消公共 Minimax 等厂商 Key 的回退。
 
 ## 6 本会话留下的临时状态
 

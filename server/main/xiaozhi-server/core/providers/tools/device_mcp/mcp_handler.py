@@ -220,8 +220,6 @@ async def call_mcp_tool(
         raise ValueError(f"工具 {tool_name} 不存在")
 
     tool_call_id = await mcp_client.get_next_id()
-    result_future = asyncio.Future()
-    await mcp_client.register_call_result_future(tool_call_id, result_future)
 
     # 处理参数
     try:
@@ -282,9 +280,10 @@ async def call_mcp_tool(
     }
 
     logger.bind(tag=TAG).info(f"发送客户端mcp工具调用请求: {actual_name}，参数: {args}")
-    await send_mcp_message(conn, payload)
-
+    result_future = asyncio.get_running_loop().create_future()
+    await mcp_client.register_call_result_future(tool_call_id, result_future)
     try:
+        await send_mcp_message(conn, payload)
         # Wait for response or timeout
         raw_result = await asyncio.wait_for(result_future, timeout=timeout)
         logger.bind(tag=TAG).info(
@@ -306,8 +305,6 @@ async def call_mcp_tool(
         # 如果结果不是预期的格式，将其转换为字符串
         return str(raw_result)
     except asyncio.TimeoutError:
-        await mcp_client.cleanup_call_result(tool_call_id)
         raise TimeoutError("工具调用请求超时")
-    except Exception as e:
+    finally:
         await mcp_client.cleanup_call_result(tool_call_id)
-        raise e

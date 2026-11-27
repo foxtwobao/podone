@@ -33,6 +33,9 @@ class ListenTextMessageHandler(TextMessageHandler):
                 f"客户端拾音模式：{conn.client_listen_mode}"
             )
         if msg_json["state"] == "start":
+            if getattr(conn, "peripheral", None) and not conn.peripheral.ring_from_standby:
+                conn.peripheral.standby = False
+                conn.last_activity_time = time.time() * 1000
             # 设备从播放模式切回录音模式,清除所有音频状态和缓冲区
             conn.reset_audio_states()
         elif msg_json["state"] == "stop":

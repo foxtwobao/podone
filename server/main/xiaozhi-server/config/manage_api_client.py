@@ -264,6 +264,16 @@ async def get_agent_models(
     )
 
 
+@api_guard(raise_when_closed=True)
+async def get_peripheral_owner(instance, mac_address: str, client_id: str) -> Dict:
+    # A stale answer would authorize the wrong account. Fail this turn on timeout.
+    async with instance._build_client() as client:
+        return await instance._async_request(
+            client, "POST", "/config/peripheral-owner",
+            json={"macAddress": mac_address, "clientId": client_id}, timeout=3,
+        )
+
+
 @api_guard("获取替换词失败")
 async def get_correct_words(instance, mac_address: str) -> Optional[Dict]:
     """获取智能体替换词"""

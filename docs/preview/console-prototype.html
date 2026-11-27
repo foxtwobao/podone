@@ -1,0 +1,1576 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Podone 新版控制台交互原型</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* Prototype switcher bar */
+  .proto-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 10px);
+  }
+  .seg {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    background: var(--muted);
+    padding: 3px;
+    border-radius: calc(var(--radius, 10px) - 2px);
+  }
+  .seg button {
+    border: 0;
+    background: transparent;
+    color: var(--muted-foreground);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: calc(var(--radius, 10px) - 4px);
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .seg button.active {
+    background: var(--card);
+    color: var(--foreground);
+    box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 8%, transparent);
+  }
+  .proto-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 11.5px;
+    color: var(--muted-foreground);
+  }
+  .chip-btn {
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--muted-foreground);
+    font: inherit;
+    font-size: 11.5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .chip-btn.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: color-mix(in oklab, var(--primary) 10%, transparent);
+  }
+
+  /* Simulated App Top Nav */
+  .app-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 10px);
+    flex-wrap: wrap;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #141416;
+    border: 1.5px solid color-mix(in oklab, var(--foreground) 22%, var(--border));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .brand-name {
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+  }
+  .brand-tag {
+    font-size: 11px;
+    color: var(--muted-foreground);
+    background: var(--secondary);
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: calc(var(--radius, 10px) - 2px);
+    cursor: pointer;
+    transition: opacity .15s, border-color .15s, background .15s;
+    white-space: nowrap;
+  }
+  .btn:hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--foreground) 30%, var(--border));
+  }
+  .btn:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
+  }
+  .btn-primary:hover:not(:disabled) {
+    opacity: .92;
+    border-color: var(--primary);
+  }
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--muted-foreground);
+    padding: 5px 8px;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--secondary);
+    color: var(--foreground);
+    border-color: transparent;
+  }
+  .btn-danger {
+    background: var(--destructive-surface, color-mix(in oklab, var(--destructive) 12%, transparent));
+    color: var(--destructive);
+    border-color: color-mix(in oklab, var(--destructive) 35%, transparent);
+  }
+  .btn-sm {
+    font-size: 12px;
+    padding: 4px 9px;
+  }
+
+  /* Cards & Sections */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 10px);
+    padding: 16px;
+  }
+  .card-muted {
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 10px);
+    padding: 14px 16px;
+  }
+
+  /* Readiness Banner */
+  .readiness {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .readiness.warn {
+    background: var(--warning-surface, color-mix(in oklab, var(--warning) 10%, var(--card)));
+    border-color: color-mix(in oklab, var(--warning) 40%, var(--border));
+  }
+  .readiness.danger {
+    background: var(--destructive-surface, color-mix(in oklab, var(--destructive) 10%, var(--card)));
+    border-color: color-mix(in oklab, var(--destructive) 40%, var(--border));
+  }
+  .readiness-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .readiness-top > div:first-child {
+    flex: 1;
+    min-width: 240px;
+  }
+  .readiness-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 13.5px;
+  }
+  .readiness-sub {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    margin-top: 3px;
+  }
+  .checks-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .check-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius, 10px) - 3px);
+    font-size: 11.5px;
+  }
+  .check-pill .lbl { color: var(--muted-foreground); }
+  .check-pill .val { font-weight: 600; margin-left: auto; }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot.ok { background: var(--success); }
+  .dot.info { background: var(--info); }
+  .dot.warn { background: var(--warning); }
+  .dot.err { background: var(--destructive); }
+  .dot.off { background: var(--muted-foreground); opacity: .5; }
+  .deep-links {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .deep-links-label {
+    font-size: 11.5px;
+    color: var(--muted-foreground);
+    margin-right: 4px;
+  }
+
+  /* Section header */
+  .sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .sec-title {
+    font-size: 14.5px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .count-badge {
+    font-size: 11.5px;
+    color: var(--muted-foreground);
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-weight: 500;
+  }
+
+  /* Pod grid */
+  .pod-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .pod-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 10px);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: border-color .15s;
+  }
+  .pod-card:hover {
+    border-color: color-mix(in oklab, var(--primary) 45%, var(--border));
+  }
+  .pod-card.selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+  }
+  .pod-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .pod-dial {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #141416;
+    border: 2px solid color-mix(in oklab, var(--foreground) 20%, var(--border));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .pod-dial.speaking {
+    border-color: var(--info);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--info) 20%, transparent);
+  }
+  .pod-dial.offline {
+    opacity: .55;
+  }
+  .pod-info { min-width: 0; flex: 1; }
+  .pod-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pod-name {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pod-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--muted-foreground);
+    margin-top: 2px;
+    flex-wrap: wrap;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--secondary);
+  }
+  .status-pill.ok {
+    color: var(--success);
+    border-color: color-mix(in oklab, var(--success) 35%, transparent);
+    background: color-mix(in oklab, var(--success) 10%, transparent);
+  }
+  .status-pill.info {
+    color: var(--info);
+    border-color: color-mix(in oklab, var(--info) 35%, transparent);
+    background: color-mix(in oklab, var(--info) 10%, transparent);
+  }
+  .status-pill.warn {
+    color: var(--warning);
+    border-color: color-mix(in oklab, var(--warning) 40%, transparent);
+    background: var(--warning-surface, color-mix(in oklab, var(--warning) 10%, transparent));
+  }
+  .pod-specs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--secondary);
+    border-radius: calc(var(--radius, 10px) - 3px);
+    font-size: 11.5px;
+  }
+  .pod-specs > div {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .spec-k { color: var(--muted-foreground); }
+  .spec-v { font-weight: 500; }
+  .pod-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: auto;
+  }
+
+  /* Device Detail Drawer / Panel */
+  .detail-panel {
+    background: var(--card);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius, 10px);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .sub-box {
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius, 10px) - 2px);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sub-box h4 {
+    margin: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .voice-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .voice-opt {
+    border: 1px solid var(--border);
+    background: var(--card);
+    border-radius: calc(var(--radius, 10px) - 3px);
+    padding: 8px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    text-align: left;
+    color: var(--foreground);
+    font: inherit;
+  }
+  .voice-opt.active {
+    border-color: var(--primary);
+    background: color-mix(in oklab, var(--primary) 10%, var(--card));
+  }
+  .voice-opt .v-name { font-size: 12px; font-weight: 600; }
+  .voice-opt .v-sub { font-size: 10.5px; color: var(--muted-foreground); }
+
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--primary);
+    cursor: pointer;
+  }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .toggle-desc {
+    font-size: 11px;
+    color: var(--muted-foreground);
+  }
+  .switch {
+    position: relative;
+    width: 34px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--muted);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .15s;
+  }
+  .switch.on {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--primary-foreground);
+    transition: transform .15s;
+  }
+  .switch.on::after {
+    transform: translateX(14px);
+  }
+
+  /* Bind View */
+  .bind-wrap {
+    max-width: 440px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .bind-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .code-pill {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    padding: 5px 14px;
+    border-radius: calc(var(--radius, 10px) - 2px);
+    background: var(--code-background, var(--secondary));
+    border: 1px solid var(--border);
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+  .input, .select {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: calc(var(--radius, 10px) - 3px);
+    border: 1px solid var(--border);
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    font-size: 13px;
+  }
+  .input:focus, .select:focus {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+  .preset-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* Admin Layout */
+  .admin-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    overflow-x: auto;
+  }
+  .admin-tab {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted-foreground);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 6px 11px;
+    border-radius: calc(var(--radius, 10px) - 3px);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .admin-tab.active {
+    background: var(--secondary);
+    color: var(--foreground);
+    border-color: var(--border);
+  }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .kpi {
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius, 10px) - 2px);
+    padding: 12px;
+  }
+  .kpi-lbl { font-size: 11.5px; color: var(--muted-foreground); }
+  .kpi-val { font-size: 20px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi-sub { font-size: 11px; color: var(--muted-foreground); margin-top: 2px; }
+
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  th {
+    color: var(--muted-foreground);
+    font-weight: 500;
+    font-size: 11.5px;
+  }
+  .mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11.5px;
+  }
+  .bar-track {
+    width: 72px;
+    height: 6px;
+    background: var(--muted);
+    border-radius: 999px;
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  .bar-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 999px;
+  }
+
+  .form-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    background: var(--foreground);
+    color: var(--background);
+    padding: 8px 14px;
+    border-radius: calc(var(--radius, 10px) - 2px);
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+    transition: opacity .18s, transform .18s;
+    z-index: 50;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 600px) {
+    .checks-row, .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pod-grid, .detail-grid, .form-2col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const VOICES = [
+  { id: "mini-warm", name: "暖声女生", desc: "默认 · 温柔自然" },
+  { id: "mini-calm", name: "沉稳男声", desc: "清晰低沉 · 适合办公" },
+  { id: "mini-bright", name: "元气少年", desc: "轻快活泼 · 响应干脆" },
+  { id: "mini-soft", name: "轻语陪伴", desc: "柔和缓慢 · 适合夜间" },
+];
+
+const state = {
+  view: "user", // user | bind | admin
+  readinessMode: "ready", // ready | auth_required | quota | legacy_device
+  selectedPodId: "pod-1",
+  detailOpen: false,
+  bindStep: "form", // form | done
+  bindName: "书房桌面",
+  bindVoice: "mini-warm",
+  adminTab: "overview", // overview | voice | ota | fleet | nodes
+  adminFleetMode: "devices", // devices | users
+  adminConfig: {
+    chatModel: "gpt-4.1-mini",
+    ttsModel: "speech-2.6-turbo",
+    ttsVoice: "mini-warm",
+    vadSilenceMs: 1100,
+    standbySec: 120,
+    wakeWord: "你好波波",
+    localTtsFallback: false,
+    tools: {
+      "self.get_device_status": true,
+      "self.audio_speaker.set_volume": true,
+      "self.screen.set_brightness": true,
+      "self.screen.set_theme": true,
+      "self.screen.play_animation": true,
+      "self.system.reconfigure_wifi": true,
+    }
+  },
+  pods: [
+    {
+      id: "pod-1",
+      name: "书房桌面",
+      board: "waveshare-1.75c",
+      mac: "c4:9e:7e:0b:d8:7c",
+      status: "standby", // standby | speaking | offline
+      lastActive: "刚刚",
+      version: "0.2.1",
+      latestVersion: "0.2.2",
+      voiceMode: "custom",
+      voiceId: "mini-warm",
+      volume: 65,
+      brightness: 80,
+      persona: "bobo", // bobo | crystal
+      allowCall: true,
+      allowNotice: true,
+      dnd: false,
+      dndRange: "23:00–08:00",
+      autoOta: true,
+      legacy: false,
+    },
+    {
+      id: "pod-2",
+      name: "卧室床头",
+      board: "waveshare-1.75c",
+      mac: "c4:9e:7e:0b:e1:14",
+      status: "speaking",
+      lastActive: "正在对话",
+      version: "0.2.2",
+      latestVersion: "0.2.2",
+      voiceMode: "custom",
+      voiceId: "mini-soft",
+      volume: 40,
+      brightness: 35,
+      persona: "crystal",
+      allowCall: false,
+      allowNotice: true,
+      dnd: true,
+      dndRange: "22:30–07:30",
+      autoOta: true,
+      legacy: false,
+    },
+    {
+      id: "pod-3",
+      name: "客厅边桌",
+      board: "waveshare-1.75c",
+      mac: "c4:9e:7e:0b:93:0a",
+      status: "offline",
+      lastActive: "2 小时前",
+      version: "0.1.9",
+      latestVersion: "0.2.2",
+      voiceMode: "default",
+      voiceId: "mini-warm",
+      volume: 70,
+      brightness: 90,
+      persona: "bobo",
+      allowCall: true,
+      allowNotice: false,
+      dnd: false,
+      dndRange: "23:00–08:00",
+      autoOta: false,
+      legacy: true,
+    }
+  ]
+};
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2000);
+}
+
+function eyeSvg(mood = "idle", size = 26) {
+  const color = mood === "speaking" ? "#60a5fa" : mood === "curious" ? "#facc15" : mood === "offline" ? "#71717a" : "#f4f4f5";
+  if (mood === "curious") {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none">
+      <rect x="6" y="12" width="9" height="12" rx="4.5" fill="${color}"/>
+      <rect x="20" y="9" width="10" height="16" rx="5" fill="${color}"/>
+    </svg>`;
+  }
+  if (mood === "offline") {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none">
+      <rect x="6" y="17" width="9" height="2.6" rx="1.3" fill="${color}"/>
+      <rect x="21" y="17" width="9" height="2.6" rx="1.3" fill="${color}"/>
+    </svg>`;
+  }
+  return `<svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none">
+    <rect x="6" y="11" width="9" height="14" rx="4.5" fill="${color}"/>
+    <rect x="21" y="11" width="9" height="14" rx="4.5" fill="${color}"/>
+  </svg>`;
+}
+
+function voiceName(id) {
+  return (VOICES.find(v => v.id === id) || VOICES[0]).name;
+}
+
+function renderProtoBar() {
+  const modeChips = state.view === "user" ? `
+    <div class="proto-meta">
+      <span>模拟状态：</span>
+      <button class="chip-btn ${state.readinessMode === 'ready' ? 'active' : ''}" data-action="readiness" data-val="ready">全部就绪</button>
+      <button class="chip-btn ${state.readinessMode === 'auth_required' ? 'active' : ''}" data-action="readiness" data-val="auth_required">待 Botone 授权</button>
+      <button class="chip-btn ${state.readinessMode === 'quota' ? 'active' : ''}" data-action="readiness" data-val="quota">额度耗尽</button>
+      <button class="chip-btn ${state.readinessMode === 'legacy_device' ? 'active' : ''}" data-action="readiness" data-val="legacy_device">旧绑定需重登</button>
+    </div>
+  ` : `<div class="proto-meta"><span>已移除：智能体 / 8 类模型 / 知识库 / 旧聊天记录 / 手动加设备</span></div>`;
+
+  return `
+    <div class="proto-bar">
+      <div class="seg">
+        <button class="${state.view === 'user' ? 'active' : ''}" data-action="view" data-val="user">用户视角 · 我的 Pod</button>
+        <button class="${state.view === 'bind' ? 'active' : ''}" data-action="view" data-val="bind">扫码开箱 · /bind</button>
+        <button class="${state.view === 'admin' ? 'active' : ''}" data-action="view" data-val="admin">管理员 · 平台运维</button>
+      </div>
+      ${modeChips}
+    </div>
+  `;
+}
+
+function renderAppNav() {
+  const isAdmin = state.view === "admin";
+  return `
+    <div class="app-nav">
+      <div class="brand">
+        <div class="brand-mark">${eyeSvg("idle", 18)}</div>
+        <div>
+          <span class="brand-name">Podone</span>
+          <span class="brand-tag">${isAdmin ? "平台运维" : "硬件控制台"}</span>
+        </div>
+      </div>
+      <div class="nav-right">
+        <button class="btn btn-sm" data-action="toast" data-msg="已新标签页打开 Botone（https://bot.lab.home.arpa）">打开 Botone ↗</button>
+        <button class="btn btn-sm ${isAdmin ? 'btn-primary' : ''}" data-action="view" data-val="${isAdmin ? 'user' : 'admin'}">${isAdmin ? "返回我的 Pod" : "管理后台"}</button>
+        <span class="brand-tag">hulei · IDONE</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderReadiness() {
+  const m = state.readinessMode;
+  const onlineCount = state.pods.filter(p => p.status !== "offline").length;
+
+  let bannerClass = "card readiness";
+  let headline = `<span class="dot ok"></span><span>已接入 Botone · 「波波」语音外设就绪</span>`;
+  let sub = "所有对话、记忆、Bot 车队调度与 TokenONE 个人计费均由 Botone 承载。现在对着在线的 Pod 说「你好波波」即可开始。";
+  let cta = `<button class="btn btn-sm" data-action="toast" data-msg="已重新检测 Botone & TokenONE 状态（42ms）">刷新体检</button>`;
+  let authVal = "已授权", authDot = "ok";
+
+  if (m === "auth_required") {
+    bannerClass = "card readiness warn";
+    headline = `<span class="dot warn"></span><span>还差一步：前往 Botone 完成 TokenONE 模型授权</span>`;
+    sub = "你的 Pod 已绑定成功，但当前 IDONE 账号尚未在 Botone 授权个人模型 Key，唤醒设备时会播报授权提示。";
+    cta = `<button class="btn btn-primary btn-sm" data-action="toast" data-msg="正在跳转 Botone 模型授权页…">去 Botone 完成授权 ↗</button>`;
+    authVal = "待授权"; authDot = "warn";
+  } else if (m === "quota") {
+    bannerClass = "card readiness danger";
+    headline = `<span class="dot err"></span><span>TokenONE 个人额度已耗尽</span>`;
+    sub = "当前账号的语音对话与流式 TTS 调用已暂停（无公共 Key 回退）。补充额度后再次唤醒即可恢复。";
+    cta = `<button class="btn btn-danger btn-sm" data-action="toast" data-msg="正在打开 Botone / TokenONE 额度管理…">管理个人额度 ↗</button>`;
+    authVal = "额度不足"; authDot = "err";
+  } else if (m === "legacy_device") {
+    bannerClass = "card readiness warn";
+    headline = `<span class="dot warn"></span><span>发现 1 台历史绑定设备需要重新登记</span>`;
+    sub = "「客厅边桌」缺少新版设备安全指纹（pairedClientHash），请在下方卡片解绑后重新扫码绑定。";
+    cta = `<button class="btn btn-sm" data-action="open-detail" data-id="pod-3">定位该设备</button>`;
+  }
+
+  return `
+    <div class="${bannerClass}">
+      <div class="readiness-top">
+        <div>
+          <div class="readiness-title">${headline}</div>
+          <div class="readiness-sub">${sub}</div>
+        </div>
+        <div>${cta}</div>
+      </div>
+      <div class="checks-row">
+        <div class="check-pill"><span class="dot ok"></span><span class="lbl">IDONE</span><span class="val">已登录</span></div>
+        <div class="check-pill"><span class="dot ok"></span><span class="lbl">Botone 波波</span><span class="val">个人 Space</span></div>
+        <div class="check-pill"><span class="dot ${authDot}"></span><span class="lbl">TokenONE</span><span class="val">${authVal}</span></div>
+        <div class="check-pill"><span class="dot ${onlineCount ? 'ok' : 'off'}"></span><span class="lbl">Pod 在线</span><span class="val">${onlineCount}/${state.pods.length}</span></div>
+      </div>
+      <div class="deep-links">
+        <span class="deep-links-label">大脑与对话管理（Botone）：</span>
+        <button class="btn btn-ghost btn-sm" data-action="toast" data-msg="跳转 Botone → 波波 → 设置 → 指令">编辑波波指令 ↗</button>
+        <button class="btn btn-ghost btn-sm" data-action="toast" data-msg="跳转 Botone → 对话记录与任务">对话记录与任务 ↗</button>
+        <button class="btn btn-ghost btn-sm" data-action="toast" data-msg="跳转 Botone → 设置 → 审批规则">审批规则 ↗</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderPodCard(pod) {
+  const showLegacy = state.readinessMode === "legacy_device" && pod.legacy;
+  const isSelected = state.detailOpen && state.selectedPodId === pod.id;
+  const online = pod.status !== "offline";
+  const hasOta = pod.version !== pod.latestVersion;
+
+  let statusHtml = `<span class="status-pill"><span class="dot off"></span>离线 · ${pod.lastActive}</span>`;
+  if (showLegacy) {
+    statusHtml = `<span class="status-pill warn"><span class="dot warn"></span>需重新登记</span>`;
+  } else if (pod.status === "standby") {
+    statusHtml = `<span class="status-pill ok"><span class="dot ok"></span>在线待机</span>`;
+  } else if (pod.status === "speaking") {
+    statusHtml = `<span class="status-pill info"><span class="dot info"></span>对话中</span>`;
+  }
+
+  const eyeMood = pod.status === "speaking" ? "speaking" : pod.status === "offline" ? "offline" : "idle";
+  const voiceText = pod.voiceMode === "default" ? `默认 (${voiceName(state.adminConfig.ttsVoice)})` : voiceName(pod.voiceId);
+
+  return `
+    <div class="pod-card ${isSelected ? 'selected' : ''}">
+      <div class="pod-top">
+        <div class="pod-dial ${pod.status === 'speaking' ? 'speaking' : ''} ${!online ? 'offline' : ''}">
+          ${eyeSvg(eyeMood, 24)}
+        </div>
+        <div class="pod-info">
+          <div class="pod-name-row">
+            <span class="pod-name">${pod.name}</span>
+            ${statusHtml}
+          </div>
+          <div class="pod-meta">
+            <span class="mono">${pod.board}</span>
+            <span>·</span>
+            <span>v${pod.version}${hasOta ? " (有新版本)" : ""}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pod-specs">
+        <div><span class="spec-k">播报音色：</span><span class="spec-v">${voiceText}</span></div>
+        <div><span class="spec-k">来电/通知：</span><span class="spec-v">${pod.dnd ? "免打扰 " + pod.dndRange : (pod.allowCall ? "允许来电" : "仅通知")}</span></div>
+      </div>
+
+      <div class="pod-actions">
+        <button class="btn btn-sm" ${!online ? 'disabled' : ''} data-action="ping-pod" data-id="${pod.id}">眨眼试音</button>
+        <button class="btn btn-primary btn-sm" data-action="open-detail" data-id="${pod.id}">
+          ${isSelected ? "收起设置" : "设备设置"}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderDetailPanel() {
+  if (!state.detailOpen) return "";
+  const pod = state.pods.find(p => p.id === state.selectedPodId);
+  if (!pod) return "";
+  const online = pod.status !== "offline";
+
+  return `
+    <div class="detail-panel">
+      <div class="sec-head">
+        <div class="sec-title">
+          <span>${pod.name} · 设备控制与偏好</span>
+          <span class="count-badge mono">${pod.mac}</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-action="close-detail">关闭 ✕</button>
+      </div>
+
+      <div class="detail-grid">
+        <div class="sub-box">
+          <h4>
+            <span>声音与播报音色</span>
+            <span class="count-badge">${state.adminConfig.ttsModel}</span>
+          </h4>
+          <div class="toggle-row">
+            <div>
+              <div>为这台 Pod 单独指定音色</div>
+              <div class="toggle-desc">关闭时跟随系统默认音色（${voiceName(state.adminConfig.ttsVoice)}）</div>
+            </div>
+            <div class="switch ${pod.voiceMode === 'custom' ? 'on' : ''}" data-action="toggle-voice-mode" data-id="${pod.id}"></div>
+          </div>
+          <div class="voice-grid">
+            ${VOICES.map(v => `
+              <button class="voice-opt ${pod.voiceMode === 'custom' && pod.voiceId === v.id ? 'active' : ''}"
+                data-action="pick-voice" data-id="${pod.id}" data-val="${v.id}">
+                <div>
+                  <div class="v-name">${v.name}</div>
+                  <div class="v-sub">${v.desc}</div>
+                </div>
+                <span class="count-badge">试听</span>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+
+        <div class="sub-box">
+          <h4>
+            <span>实时硬件遥控（设备 MCP）</span>
+            <span class="count-badge">${online ? "实时生效" : "设备离线"}</span>
+          </h4>
+          <div class="slider-row">
+            <div class="slider-label"><span>扬声器音量</span><span class="mono">${pod.volume}%</span></div>
+            <input type="range" min="0" max="100" value="${pod.volume}" ${!online ? 'disabled' : ''} data-range="volume" data-id="${pod.id}" />
+          </div>
+          <div class="slider-row">
+            <div class="slider-label"><span>圆屏亮度</span><span class="mono">${pod.brightness}%</span></div>
+            <input type="range" min="10" max="100" value="${pod.brightness}" ${!online ? 'disabled' : ''} data-range="brightness" data-id="${pod.id}" />
+          </div>
+          <div class="toggle-row">
+            <span>圆屏形象</span>
+            <div class="seg">
+              <button class="${pod.persona === 'bobo' ? 'active' : ''}" data-action="persona" data-id="${pod.id}" data-val="bobo">极简波波</button>
+              <button class="${pod.persona === 'crystal' ? 'active' : ''}" data-action="persona" data-id="${pod.id}" data-val="crystal">琉璃金缮</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">
+            <button class="btn btn-sm" ${!online ? 'disabled' : ''} data-action="ping-pod" data-id="${pod.id}">播放眨眼动画</button>
+            <button class="btn btn-sm" ${!online ? 'disabled' : ''} data-action="toast" data-msg="已下发 self.system.reconfigure_wifi 指令">重新配网</button>
+          </div>
+        </div>
+
+        <div class="sub-box">
+          <h4><span>来电与通知偏好</span></h4>
+          <div class="toggle-row">
+            <div>
+              <div>接收 Bot 主动来电</div>
+              <div class="toggle-desc">允许 Botone call_user 在此设备响铃</div>
+            </div>
+            <div class="switch ${pod.allowCall ? 'on' : ''}" data-action="toggle-prop" data-id="${pod.id}" data-prop="allowCall"></div>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div>播报例行任务与异步结果</div>
+              <div class="toggle-desc">关闭后通知仅保留在 Botone Thread</div>
+            </div>
+            <div class="switch ${pod.allowNotice ? 'on' : ''}" data-action="toggle-prop" data-id="${pod.id}" data-prop="allowNotice"></div>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div>夜间免打扰（${pod.dndRange}）</div>
+              <div class="toggle-desc">时段内不响铃不主动播报</div>
+            </div>
+            <div class="switch ${pod.dnd ? 'on' : ''}" data-action="toggle-prop" data-id="${pod.id}" data-prop="dnd"></div>
+          </div>
+        </div>
+
+        <div class="sub-box">
+          <h4><span>固件与设备安全</span></h4>
+          <div class="toggle-row">
+            <div>
+              <div>自动固件更新（OTA）</div>
+              <div class="toggle-desc">当前 v${pod.version} · 最新 v${pod.latestVersion}</div>
+            </div>
+            <div class="switch ${pod.autoOta ? 'on' : ''}" data-action="toggle-prop" data-id="${pod.id}" data-prop="autoOta"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding-top:8px;border-top:1px solid var(--border);">
+            <span class="toggle-desc">解绑将立即断开连接，不影响 Botone 历史记录</span>
+            <button class="btn btn-danger btn-sm" data-action="unbind-pod" data-id="${pod.id}">解绑设备</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderUserView() {
+  return `
+    ${renderAppNav()}
+    ${renderReadiness()}
+    <div class="sec-head">
+      <div class="sec-title">
+        <span>我的 Pod</span>
+        <span class="count-badge">${state.pods.length} 台</span>
+      </div>
+      <button class="btn btn-primary btn-sm" data-action="view" data-val="bind">+ 绑定新 Pod</button>
+    </div>
+    <div class="pod-grid">
+      ${state.pods.map(renderPodCard).join("")}
+    </div>
+    ${renderDetailPanel()}
+  `;
+}
+
+function renderBindView() {
+  if (state.bindStep === "done") {
+    return `
+      ${renderAppNav()}
+      <div class="bind-wrap">
+        <div class="card" style="display:flex;flex-direction:column;gap:14px;">
+          <div class="bind-hero">
+            <div class="pod-dial" style="width:60px;height:60px;border-color:var(--success);">${eyeSvg("idle", 30)}</div>
+            <div style="font-size:16px;font-weight:600;">「${state.bindName}」已绑定并激活</div>
+            <div class="readiness-sub">无需创建智能体，设备已自动连接至你的 Botone「波波」。</div>
+          </div>
+          <div class="checks-row" style="grid-template-columns:1fr 1fr;">
+            <div class="check-pill"><span class="dot ok"></span><span class="lbl">设备指纹</span><span class="val">已登记</span></div>
+            <div class="check-pill"><span class="dot ok"></span><span class="lbl">TokenONE</span><span class="val">已就绪</span></div>
+          </div>
+          <div class="card-muted" style="font-size:12px;">
+            现在可以直接对你的 Pod 说：<strong>「你好波波，今天杭州天气怎么样？」</strong>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn" data-action="reset-bind">继续绑定下一台</button>
+            <button class="btn btn-primary" data-action="view" data-val="user">进入我的 Pod</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    ${renderAppNav()}
+    <div class="bind-wrap">
+      <div class="card" style="display:flex;flex-direction:column;gap:14px;">
+        <div class="bind-hero">
+          <div class="pod-dial" style="width:60px;height:60px;">${eyeSvg("curious", 30)}</div>
+          <div style="font-size:16px;font-weight:600;">发现一台新的 Pod</div>
+          <div class="readiness-sub">已从扫码链接自动预填激活码 · 板型 <span class="mono">waveshare-1.75c</span></div>
+          <div class="code-pill">482 916</div>
+        </div>
+
+        <div class="field">
+          <label>1. 给这台 Pod 起个名字（方便区分摆放位置）</label>
+          <input class="input" id="bind-name-input" value="${state.bindName}" placeholder="例如：书房桌面" />
+          <div class="preset-tags">
+            ${["书房桌面", "卧室床头", "客厅边桌", "公司工位"].map(n => `
+              <button class="chip-btn ${state.bindName === n ? 'active' : ''}" data-action="bind-preset" data-val="${n}">${n}</button>
+            `).join("")}
+          </div>
+        </div>
+
+        <div class="field">
+          <label>2. 选择播报音色（绑定后随时可换）</label>
+          <div class="voice-grid">
+            ${VOICES.slice(0, 4).map(v => `
+              <button class="voice-opt ${state.bindVoice === v.id ? 'active' : ''}" data-action="bind-voice" data-val="${v.id}">
+                <div>
+                  <div class="v-name">${v.name}</div>
+                  <div class="v-sub">${v.desc}</div>
+                </div>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:4px;">
+          <button class="btn" data-action="view" data-val="user">取消</button>
+          <button class="btn btn-primary" data-action="confirm-bind">绑定到 hulei 的账号</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAdminContent() {
+  const tab = state.adminTab;
+  if (tab === "overview") {
+    return `
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="kpi-lbl">在线 Pod</div>
+          <div class="kpi-val">18 <span style="font-size:13px;font-weight:400;color:var(--muted-foreground)">/ 24</span></div>
+          <div class="kpi-sub">待机 16 · 对话中 2</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-lbl">语音网关节点</div>
+          <div class="kpi-val" style="color:var(--success)">1 / 1</div>
+          <div class="kpi-sub">VAD/ASR 延迟 95ms</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-lbl">Botone Bridge</div>
+          <div class="kpi-val">42ms</div>
+          <div class="kpi-sub">HTTPS 内网互通正常</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-lbl">24h 鉴权/额度拦截</div>
+          <div class="kpi-val" style="color:var(--warning)">3</div>
+          <div class="kpi-sub">2 未授权 · 1 额度耗尽</div>
+        </div>
+      </div>
+
+      <div class="card-muted" style="display:flex;flex-direction:column;gap:8px;">
+        <div class="sec-head">
+          <strong style="font-size:13px;">核心链路健康自检</strong>
+          <button class="btn btn-sm" data-action="toast" data-msg="全部 4 项链路探活通过（耗时 118ms）">立即探活</button>
+        </div>
+        <div class="checks-row">
+          <div class="check-pill"><span class="dot ok"></span><span class="lbl">IDONE OIDC</span><span class="val">正常</span></div>
+          <div class="check-pill"><span class="dot ok"></span><span class="lbl">Botone API</span><span class="val">200 OK</span></div>
+          <div class="check-pill"><span class="dot ok"></span><span class="lbl">语音模型配置</span><span class="val">已配置</span></div>
+          <div class="check-pill"><span class="dot ok"></span><span class="lbl">零公共 Key 守卫</span><span class="val">已开启</span></div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (tab === "voice") {
+    const c = state.adminConfig;
+    return `
+      <div class="form-2col">
+        <div class="sub-box">
+          <h4><span>TokenONE 语音通道（替代裸 JSON 参数）</span></h4>
+          <div class="field">
+            <label>默认语音对话模型 (chatModel)</label>
+            <input class="input mono" value="${c.chatModel}" data-admin-input="chatModel" />
+          </div>
+          <div class="field">
+            <label>云端流式合成模型 (ttsModel)</label>
+            <input class="input mono" value="${c.ttsModel}" data-admin-input="ttsModel" />
+          </div>
+          <div class="field">
+            <label>系统默认音色 (ttsVoice)</label>
+            <select class="select" data-admin-select="ttsVoice">
+              ${VOICES.map(v => `<option value="${v.id}" ${c.ttsVoice === v.id ? 'selected' : ''}>${v.name} (${v.id})</option>`).join("")}
+            </select>
+          </div>
+        </div>
+
+        <div class="sub-box">
+          <h4><span>本地音频与待机策略</span></h4>
+          <div class="form-2col">
+            <div class="field">
+              <label>VAD 静默断句 (ms)</label>
+              <input class="input mono" type="number" value="${c.vadSilenceMs}" data-admin-input="vadSilenceMs" />
+            </div>
+            <div class="field">
+              <label>闲置进待机 (秒)</label>
+              <input class="input mono" type="number" value="${c.standbySec}" data-admin-input="standbySec" />
+            </div>
+          </div>
+          <div class="field">
+            <label>唤醒词（固件一致）</label>
+            <input class="input" value="${c.wakeWord}" data-admin-input="wakeWord" />
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div>允许本地 Kokoro TTS 兜底（仅内网测试）</div>
+              <div class="toggle-desc">生产环境保持关闭，严格走用户个人 TokenONE Key</div>
+            </div>
+            <div class="switch ${c.localTtsFallback ? 'on' : ''}" data-action="admin-toggle-kokoro"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub-box">
+        <h4>
+          <span>暴露给 Botone 的硬件 MCP 工具白名单 (botone.device_tools)</span>
+          <button class="btn btn-primary btn-sm" data-action="toast" data-msg="语音与通道配置已保存并下发至语音节点">保存并热更新</button>
+        </h4>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${Object.entries(c.tools).map(([k, on]) => `
+            <button class="chip-btn mono ${on ? 'active' : ''}" data-action="admin-toggle-tool" data-val="${k}">${on ? "✓ " : ""}${k}</button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  if (tab === "ota") {
+    return `
+      <div class="sec-head">
+        <div class="sec-title"><span>固件发布管理</span><span class="count-badge mono">waveshare-1.75c</span></div>
+        <button class="btn btn-primary btn-sm" data-action="toast" data-msg="打开上传固件包弹窗（自动校验板型与 SHA-256）">+ 上传新固件</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>版本</th><th>板型</th><th>大小</th><th>装机占比</th><th>更新说明</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono"><strong>0.2.2</strong> <span class="count-badge">最新</span></td>
+              <td class="mono">waveshare-1.75c</td>
+              <td class="mono">4.8 MB</td>
+              <td><span class="bar-track"><span class="bar-fill" style="width:65%"></span></span>65%</td>
+              <td>优化在线待机息屏与来电响铃</td>
+              <td><button class="btn btn-ghost btn-sm" data-action="toast" data-msg="开始下载 v0.2.2 固件">下载</button></td>
+            </tr>
+            <tr>
+              <td class="mono">0.2.1</td>
+              <td class="mono">waveshare-1.75c</td>
+              <td class="mono">4.7 MB</td>
+              <td><span class="bar-track"><span class="bar-fill" style="width:25%"></span></span>25%</td>
+              <td>新增琉璃金缮圆屏形象</td>
+              <td><button class="btn btn-ghost btn-sm" data-action="toast" data-msg="已将 v0.2.1 设为回滚目标">设为最新</button></td>
+            </tr>
+            <tr>
+              <td class="mono">0.1.9</td>
+              <td class="mono">waveshare-1.75c</td>
+              <td class="mono">4.5 MB</td>
+              <td><span class="bar-track"><span class="bar-fill" style="width:10%"></span></span>10%</td>
+              <td>初版你好波波唤醒基线</td>
+              <td><button class="btn btn-ghost btn-sm" data-action="toast" data-msg="历史固件已归档">归档</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  if (tab === "fleet") {
+    return `
+      <div class="sec-head">
+        <div class="seg">
+          <button class="${state.adminFleetMode === 'devices' ? 'active' : ''}" data-action="fleet-mode" data-val="devices">全量 Pod 设备 (24)</button>
+          <button class="${state.adminFleetMode === 'users' ? 'active' : ''}" data-action="fleet-mode" data-val="users">IDONE 用户 (9)</button>
+        </div>
+        <button class="btn btn-sm" data-action="toast" data-msg="已刷新全量设备实时连接表">刷新状态</button>
+      </div>
+      <div class="table-wrap">
+        ${state.adminFleetMode === "devices" ? `
+          <table>
+            <thead><tr><th>设备名称</th><th>MAC</th><th>归属用户</th><th>状态</th><th>固件</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>书房桌面</td><td class="mono">c4:9e:7e:0b:d8:7c</td><td>hulei</td><td><span class="status-pill ok"><span class="dot ok"></span>在线待机</span></td><td class="mono">0.2.1</td><td><button class="btn btn-ghost btn-sm" data-action="toast" data-msg="已强制断开并重新校验归属">断开重连</button></td></tr>
+              <tr><td>卧室床头</td><td class="mono">c4:9e:7e:0b:e1:14</td><td>hulei</td><td><span class="status-pill info"><span class="dot info"></span>对话中</span></td><td class="mono">0.2.2</td><td><button class="btn btn-ghost btn-sm" data-action="toast" data-msg="已强制断开并重新校验归属">断开重连</button></td></tr>
+              <tr><td>设计组前台</td><td class="mono">a8:42:e3:12:0f:91</td><td>alice</td><td><span class="status-pill"><span class="dot off"></span>离线</span></td><td class="mono">0.2.2</td><td><button class="btn btn-danger btn-sm" data-action="toast" data-msg="已执行管理员强制解绑">强制解绑</button></td></tr>
+            </tbody>
+          </table>
+        ` : `
+          <table>
+            <thead><tr><th>IDONE 账号</th><th>绑定 Pod</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>admin@agentone.work</td><td>3 台</td><td><span class="count-badge">管理员</span></td><td><span class="status-pill ok"><span class="dot ok"></span>正常</span></td><td><span class="toggle-desc">当前账号</span></td></tr>
+              <tr><td>alice@agentone.work</td><td>2 台</td><td>普通用户</td><td><span class="status-pill ok"><span class="dot ok"></span>正常</span></td><td><button class="btn btn-danger btn-sm" data-action="toast" data-msg="停用后将立即踢断该用户名下所有在线 Pod">停用账号</button></td></tr>
+            </tbody>
+          </table>
+        `}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="sub-box">
+      <h4><span>WebSocket 语音服务节点</span></h4>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div>
+          <div class="mono">wss://pod.lab.home.arpa/xiaozhi/v1/</div>
+          <div class="toggle-desc">连接数：18 · 运行时长：6 天 14 小时 · 内存 412 MB</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm" data-action="toast" data-msg="已向语音节点推送配置重载">重载配置</button>
+          <button class="btn btn-danger btn-sm" data-action="toast" data-msg="已发送优雅重启指令">重启节点</button>
+        </div>
+      </div>
+    </div>
+    <div class="sub-box">
+      <h4><span>基础设施核心参数（仅保留 4 项）</span></h4>
+      <div class="form-2col">
+        <div class="field"><label>server.fronted_url</label><input class="input mono" value="https://pod.lab.home.arpa" /></div>
+        <div class="field"><label>server.websocket</label><input class="input mono" value="ws://pod.lab.home.arpa/xiaozhi/v1/" /></div>
+        <div class="field"><label>server.ota</label><input class="input mono" value="http://pod.lab.home.arpa/xiaozhi/ota/" /></div>
+        <div class="field"><label>server.auth.enabled</label><input class="input mono" value="true" /></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAdminView() {
+  const tabs = [
+    ["overview", "运行概览"],
+    ["voice", "语音与通道"],
+    ["ota", "固件 OTA"],
+    ["fleet", "用户与设备"],
+    ["nodes", "节点与参数"],
+  ];
+  return `
+    ${renderAppNav()}
+    <div class="card" style="display:flex;flex-direction:column;gap:14px;">
+      <div class="admin-tabs">
+        ${tabs.map(([k, lbl]) => `
+          <button class="admin-tab ${state.adminTab === k ? 'active' : ''}" data-action="admin-tab" data-val="${k}">${lbl}</button>
+        `).join("")}
+      </div>
+      ${renderAdminContent()}
+    </div>
+  `;
+}
+
+function render() {
+  const root = document.getElementById("app");
+  let body = "";
+  if (state.view === "user") body = renderUserView();
+  else if (state.view === "bind") body = renderBindView();
+  else body = renderAdminView();
+
+  root.innerHTML = renderProtoBar() + body;
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-action]");
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const val = btn.dataset.val;
+  const id = btn.dataset.id;
+
+  if (action === "view") {
+    state.view = val;
+    if (val === "bind") state.bindStep = "form";
+    render();
+  } else if (action === "readiness") {
+    state.readinessMode = val;
+    render();
+  } else if (action === "open-detail") {
+    if (state.detailOpen && state.selectedPodId === id) {
+      state.detailOpen = false;
+    } else {
+      state.selectedPodId = id;
+      state.detailOpen = true;
+    }
+    render();
+  } else if (action === "close-detail") {
+    state.detailOpen = false;
+    render();
+  } else if (action === "ping-pod") {
+    const pod = state.pods.find(p => p.id === id);
+    showToast(`已向「${pod.name}」发送眨眼与试音测试`);
+  } else if (action === "toggle-voice-mode") {
+    const pod = state.pods.find(p => p.id === id);
+    pod.voiceMode = pod.voiceMode === "custom" ? "default" : "custom";
+    showToast(pod.voiceMode === "custom" ? "已切换为设备单独音色" : "已跟随系统默认音色");
+    render();
+  } else if (action === "pick-voice") {
+    const pod = state.pods.find(p => p.id === id);
+    pod.voiceMode = "custom";
+    pod.voiceId = val;
+    showToast(`已切换音色为「${voiceName(val)}」，正在播放试听样本`);
+    render();
+  } else if (action === "persona") {
+    const pod = state.pods.find(p => p.id === id);
+    pod.persona = val;
+    showToast(`已切换「${pod.name}」圆屏形象为 ${val === 'bobo' ? '极简波波' : '琉璃金缮'}`);
+    render();
+  } else if (action === "toggle-prop") {
+    const pod = state.pods.find(p => p.id === id);
+    const prop = btn.dataset.prop;
+    pod[prop] = !pod[prop];
+    showToast("设备偏好已更新");
+    render();
+  } else if (action === "unbind-pod") {
+    const pod = state.pods.find(p => p.id === id);
+    state.pods = state.pods.filter(p => p.id !== id);
+    state.detailOpen = false;
+    showToast(`已解绑「${pod.name}」并断开当前会话`);
+    render();
+  } else if (action === "bind-preset") {
+    state.bindName = val;
+    render();
+  } else if (action === "bind-voice") {
+    state.bindVoice = val;
+    render();
+  } else if (action === "confirm-bind") {
+    const input = document.getElementById("bind-name-input");
+    if (input && input.value.trim()) state.bindName = input.value.trim();
+    state.pods.unshift({
+      id: "pod-" + Date.now(),
+      name: state.bindName,
+      board: "waveshare-1.75c",
+      mac: "c4:9e:7e:0b:ff:01",
+      status: "standby",
+      lastActive: "刚刚",
+      version: "0.2.2",
+      latestVersion: "0.2.2",
+      voiceMode: "custom",
+      voiceId: state.bindVoice,
+      volume: 65,
+      brightness: 80,
+      persona: "bobo",
+      allowCall: true,
+      allowNotice: true,
+      dnd: false,
+      dndRange: "23:00–08:00",
+      autoOta: true,
+      legacy: false,
+    });
+    state.bindStep = "done";
+    showToast("设备绑定成功");
+    render();
+  } else if (action === "reset-bind") {
+    state.bindStep = "form";
+    render();
+  } else if (action === "admin-tab") {
+    state.adminTab = val;
+    render();
+  } else if (action === "fleet-mode") {
+    state.adminFleetMode = val;
+    render();
+  } else if (action === "admin-toggle-kokoro") {
+    state.adminConfig.localTtsFallback = !state.adminConfig.localTtsFallback;
+    render();
+  } else if (action === "admin-toggle-tool") {
+    state.adminConfig.tools[val] = !state.adminConfig.tools[val];
+    render();
+  } else if (action === "toast") {
+    showToast(btn.dataset.msg || "操作完成");
+  }
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.id === "bind-name-input") {
+    state.bindName = e.target.value;
+    return;
+  }
+  const range = e.target.dataset.range;
+  if (range) {
+    const pod = state.pods.find(p => p.id === e.target.dataset.id);
+    if (pod) {
+      pod[range] = Number(e.target.value);
+      const label = e.target.previousElementSibling.querySelector(".mono");
+      if (label) label.textContent = pod[range] + "%";
+    }
+  }
+  const adminKey = e.target.dataset.adminInput;
+  if (adminKey) {
+    state.adminConfig[adminKey] = e.target.value;
+  }
+});
+
+document.addEventListener("change", (e) => {
+  if (e.target.dataset.range) {
+    const pod = state.pods.find(p => p.id === e.target.dataset.id);
+    showToast(`已通过设备 MCP 下发${e.target.dataset.range === 'volume' ? '音量' : '亮度'}：${pod[e.target.dataset.range]}%`);
+  }
+  const adminSel = e.target.dataset.adminSelect;
+  if (adminSel) {
+    state.adminConfig[adminSel] = e.target.value;
+  }
+});
+
+render();
+</script>
+</body>
+</html>

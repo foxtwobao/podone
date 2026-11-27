@@ -1,0 +1,196 @@
+diff --git a/main/application.cc b/main/application.cc
+index 300a36c..b4f0cab 100644
+--- a/main/application.cc
++++ b/main/application.cc
+@@ -297,6 +297,15 @@ void Application::Run() {
+ 
+         if (bits & MAIN_EVENT_CLOCK_TICK) {
+             clock_ticks_++;
++            if (online_standby_ && startup_completed_ && network_connected_ &&
++                GetDeviceState() == kDeviceStateIdle && esp_timer_get_time() >= next_standby_connect_us_ &&
++                !protocol_->IsAudioChannelOpened()) {
++                // Use the same main-task handshake as wake-word connections, without opening the mic.
++                connecting_in_standby_ = true;
++                protocol_->OpenAudioChannel();
++                connecting_in_standby_ = false;
++                next_standby_connect_us_ = esp_timer_get_time() + 30000000;
++            }
+             auto display = Board::GetInstance().GetDisplay();
+             display->UpdateStatusBar();
+ 
+@@ -315,6 +324,8 @@ void Application::Run() {
+ }
+ 
+ void Application::HandleNetworkConnectedEvent() {
++    network_connected_ = true;
++    next_standby_connect_us_ = 0;
+     ESP_LOGI(TAG, "Network connected");
+     auto state = GetDeviceState();
+ 
+@@ -342,12 +353,13 @@ void Application::HandleNetworkConnectedEvent() {
+ }
+ 
+ void Application::HandleNetworkDisconnectedEvent() {
++    network_connected_ = false;
+     // Close current conversation when network disconnected
+     auto state = GetDeviceState();
+     if (state == kDeviceStateNotifying) {
+         StopNotification();
+     }
+-    if (state == kDeviceStateConnecting || state == kDeviceStateListening ||
++    if (online_standby_ || state == kDeviceStateConnecting || state == kDeviceStateListening ||
+         state == kDeviceStateSpeaking) {
+         ESP_LOGI(TAG, "Closing audio channel due to network disconnection");
+         protocol_->CloseAudioChannel();
+@@ -578,6 +590,7 @@ void Application::InitializeProtocol() {
+         protocol_ = std::make_unique<MqttProtocol>();
+     } else if (ota_->HasWebsocketConfig()) {
+         protocol_ = std::make_unique<WebsocketProtocol>();
++        online_standby_ = board.KeepWebsocketInStandby();
+     } else {
+         ESP_LOGW(TAG, "No protocol specified in the OTA config, using MQTT");
+         protocol_ = std::make_unique<MqttProtocol>();
+@@ -586,6 +599,7 @@ void Application::InitializeProtocol() {
+     protocol_->OnConnected([this]() { DismissAlert(); });
+ 
+     protocol_->OnNetworkError([this](const std::string& message) {
++        if (connecting_in_standby_) return;
+         last_error_message_ = message;
+         xEventGroupSetBits(event_group_, MAIN_EVENT_ERROR);
+     });
+@@ -597,7 +611,7 @@ void Application::InitializeProtocol() {
+     });
+ 
+     protocol_->OnAudioChannelOpened([this, codec, &board]() {
+-        board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
++        board.SetPowerSaveLevel(connecting_in_standby_ ? PowerSaveLevel::LOW_POWER : PowerSaveLevel::PERFORMANCE);
+         if (protocol_->server_sample_rate() != codec->output_sample_rate()) {
+             ESP_LOGW(TAG,
+                      "Server sample rate %d does not match device output sample rate %d, "
+@@ -622,7 +636,12 @@ void Application::InitializeProtocol() {
+             ESP_LOGW(TAG, "Incoming JSON message has no type");
+             return;
+         }
+-        if (strcmp(type->valuestring, "notify") == 0) {
++        if (strcmp(type->valuestring, "keepalive") == 0) {
++            return;
++        }
++        if (strcmp(type->valuestring, "standby") == 0) {
++            Schedule([this]() { SetDeviceState(kDeviceStateIdle); });
++        } else if (strcmp(type->valuestring, "notify") == 0) {
+             auto audio_url = cJSON_GetObjectItem(root, "audio_url");
+             if (!cJSON_IsString(audio_url) || audio_url->valuestring[0] == '\0') {
+                 ESP_LOGW(TAG, "Notify message requires audio_url");
+@@ -666,9 +685,16 @@ void Application::InitializeProtocol() {
+                     SetDeviceState(kDeviceStateSpeaking);
+                 });
+             } else if (strcmp(state->valuestring, "stop") == 0) {
+-                Schedule([this]() {
++                const auto after = cJSON_GetObjectItem(root, "after");
++                const bool standby = cJSON_IsString(after) && strcmp(after->valuestring, "standby") == 0;
++                const bool listen = cJSON_IsString(after) && strcmp(after->valuestring, "listen") == 0;
++                Schedule([this, standby, listen]() {
+                     if (GetDeviceState() == kDeviceStateSpeaking) {
+-                        if (listening_mode_ == kListeningModeManualStop) {
++                        if (standby) {
++                            SetDeviceState(kDeviceStateIdle);
++                        } else if (listen) {
++                            SetListeningMode(GetDefaultListeningMode());
++                        } else if (listening_mode_ == kListeningModeManualStop) {
+                             SetDeviceState(kDeviceStateIdle);
+                         } else {
+                             SetDeviceState(kDeviceStateListening);
+@@ -1042,6 +1068,14 @@ void Application::HandleStateChangedEvent() {
+     auto led = board.GetLed();
+     led->OnStateChanged();
+ 
++    if (online_standby_) {
++        if (new_state == kDeviceStateIdle) {
++            board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
++        } else if (new_state == kDeviceStateListening || new_state == kDeviceStateSpeaking ||
++                   new_state == kDeviceStateNotifying) {
++            board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
++        }
++    }
+     switch (new_state) {
+         case kDeviceStateUnknown:
+         case kDeviceStateIdle:
+@@ -1408,7 +1442,7 @@ bool Application::CanEnterSleepMode() {
+         return false;
+     }
+ 
+-    if (protocol_ && protocol_->IsAudioChannelOpened()) {
++    if (!online_standby_ && protocol_ && protocol_->IsAudioChannelOpened()) {
+         return false;
+     }
+ 
+diff --git a/main/application.h b/main/application.h
+index 866c2a7..0dcf069 100644
+--- a/main/application.h
++++ b/main/application.h
+@@ -6,6 +6,7 @@
+ #include <freertos/task.h>
+ #include <esp_timer.h>
+ 
++#include <atomic>
+ #include <string>
+ #include <mutex>
+ #include <deque>
+@@ -114,6 +115,7 @@ public:
+     void WakeWordInvoke(const std::string& wake_word);
+     bool UpgradeFirmware(const std::string& url, const std::string& version = "");
+     bool CanEnterSleepMode();
++    bool HasOnlineStandby() const { return online_standby_.load(); }
+     void SendMcpMessage(const std::string& payload);
+     void RegisterMcpBroadcastCallback(std::function<void(const std::string&)> callback);
+     void SetAecMode(AecMode mode);
+@@ -152,6 +154,10 @@ private:
+ 
+     bool has_server_time_ = false;
+     bool startup_completed_ = false;
++    std::atomic<bool> online_standby_{false};
++    std::atomic<bool> connecting_in_standby_{false};
++    bool network_connected_ = false;
++    int64_t next_standby_connect_us_ = 0;
+     bool pending_startup_wake_word_hint_ = false;
+     bool aborted_ = false;
+     bool assets_version_checked_ = false;
+diff --git a/main/boards/common/board.h b/main/boards/common/board.h
+index 53dfecb..5f01f7b 100644
+--- a/main/boards/common/board.h
++++ b/main/boards/common/board.h
+@@ -81,6 +81,7 @@ public:
+     virtual Camera* GetCamera();
+     virtual NetworkInterface* GetNetwork() = 0;
+     virtual void StartNetwork() = 0;
++    virtual bool KeepWebsocketInStandby() const { return false; }
+     virtual void SetNetworkEventCallback(NetworkEventCallback callback) { (void)callback; }
+     virtual const char* GetNetworkStateIcon() = 0;
+     virtual bool GetBatteryLevel(int &level, bool& charging, bool& discharging);
+diff --git a/main/protocols/protocol.cc b/main/protocols/protocol.cc
+index 7383081..e1212c2 100644
+--- a/main/protocols/protocol.cc
++++ b/main/protocols/protocol.cc
+@@ -11,6 +11,7 @@ void Protocol::AddClientCapabilities(cJSON* root, bool include_text_font) {
+     if (features == nullptr) {
+         return;
+     }
++    cJSON_AddBoolToObject(features, "online_standby", true);
+     cJSON_AddBoolToObject(features, "mcp", true);
+     cJSON_AddBoolToObject(features, "mcp_20260728", true);
+     cJSON_AddBoolToObject(features, "udp_probe", true);
+diff --git a/main/protocols/websocket_protocol.cc b/main/protocols/websocket_protocol.cc
+index 047805c..410f65a 100644
+--- a/main/protocols/websocket_protocol.cc
++++ b/main/protocols/websocket_protocol.cc
+@@ -213,6 +213,10 @@ std::string WebsocketProtocol::GetHelloMessage() {
+     cJSON_AddStringToObject(root, "type", "hello");
+     cJSON_AddNumberToObject(root, "version", version_);
+     AddClientCapabilities(root);
++    auto& app = Application::GetInstance();
++    if (app.HasOnlineStandby() && app.GetDeviceState() == kDeviceStateIdle) {
++        cJSON_AddStringToObject(root, "state", "standby");
++    }
+     cJSON_AddStringToObject(root, "transport", "websocket");
+     cJSON* audio_params = cJSON_CreateObject();
+     cJSON_AddStringToObject(audio_params, "format", "opus");

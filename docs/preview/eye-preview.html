@@ -57,8 +57,8 @@
 <div class="stage">
   <div class="bezel"><canvas id="screen" width="466" height="466"></canvas></div>
   <div class="hint">
-    在圆屏上操作：单击开心，双击惊讶，长按生气，按住拖动眼睛跟随，<br>
-    左右滑切换表情，上滑惊讶，下滑困倦。侧栏可模拟服务端状态下发、倾斜与摇晃。
+    在圆屏上操作：左右滑动切换形象（形象 1 极简波波 / 形象 2 琉璃金缮），单击开心/点亮，双击惊讶，长按生气，按住拖动眼睛跟随，<br>
+    上滑惊讶，下滑困倦。侧栏可模拟服务端状态下发、倾斜与摇晃。
   </div>
 </div>
 <div class="panel">
@@ -201,6 +201,8 @@ const SCRIPTS = {
 
 // ---------- 运行状态 ----------
 const state = {
+  persona: 0,              // 0: 极简波波, 1: 琉璃金缮
+  touchActiveUntil: 0,
   device: "idle",          // idle | listening | speaking | connecting
   serverEmotion: null,     // 服务端下发的情绪，设备状态切换时清除
   reaction: null,          // { mood, until }
@@ -213,9 +215,19 @@ const state = {
   nextBlink: 2500, blinkStart: 0, blinking: false, doubleBlink: false,
   face: faceFor(Mood.Idle, 0),
   lastTick: performance.now(),
-  browseIndex: 0,
   frames: 0, fpsStamp: performance.now(), fps: 0,
 };
+
+const crystalImgs = {
+  idle: new Image(),
+  blink: new Image(),
+  active: new Image(),
+  speak: new Image(),
+};
+crystalImgs.idle.src = "assets/kintsugi_idle.png";
+crystalImgs.blink.src = "assets/kintsugi_blink.png";
+crystalImgs.active.src = "assets/kintsugi_active.png";
+crystalImgs.speak.src = "assets/kintsugi_speak.png";
 
 function deviceMood() {
   return { listening: Mood.Listening, speaking: Mood.Speaking, connecting: Mood.Thinking }[state.device]
@@ -455,8 +467,30 @@ function frame(now) {
   ctx.fillText(statusText, SCREEN / 2, 28 + 18);
 
   const half = HOME_X * spec.scale;
-  drawEye(state.face.left, SCREEN / 2 - half, spec.centerY + (spec.boxY - 0), spec.scale, blink, now, 0);
-  drawEye(state.face.right, SCREEN / 2 + half, spec.centerY + spec.boxY, spec.scale, blink, now, 1);
+  if (state.persona === 1) {
+    const lit = state.device === "listening" || state.device === "speaking" || state.touchActiveUntil > now;
+    const baseImg = lit ? crystalImgs.active : crystalImgs.idle;
+    const yShift = (state.device === "wifi" || state.device === "activating") ? -56 : 0;
+    if (baseImg.complete) ctx.drawImage(baseImg, 0, yShift, SCREEN, SCREEN);
+    if (state.device === "speaking" && crystalImgs.speak.complete) {
+      const t = now * 0.001;
+      const openK = Math.max(0, Math.min(1, 0.5 + 0.55 * Math.sin(t * 11.5) * Math.cos(t * 4.3)));
+      if (openK > 0.05) {
+        ctx.save(); ctx.globalAlpha = openK;
+        ctx.drawImage(crystalImgs.speak, 180, 234, 106, 60, 180, 234 + yShift, 106, 60);
+        ctx.restore();
+      }
+    }
+    const closeK = (state.device === "connecting" || mood === Mood.Sleepy) ? 1 : Math.max(0, Math.min(1, (1 - blink) * 1.1));
+    if (closeK > 0.04 && crystalImgs.blink.complete) {
+      ctx.save(); ctx.globalAlpha = closeK;
+      ctx.drawImage(crystalImgs.blink, 136, 148, 194, 60, 136, 148 + yShift, 194, 60);
+      ctx.restore();
+    }
+  } else {
+    drawEye(state.face.left, SCREEN / 2 - half, spec.centerY + (spec.boxY - 0), spec.scale, blink, now, 0);
+    drawEye(state.face.right, SCREEN / 2 + half, spec.centerY + spec.boxY, spec.scale, blink, now, 1);
+  }
   drawText(spec);
   ctx.restore();
 
@@ -465,7 +499,7 @@ function frame(now) {
     state.fps = state.frames / ((now - state.fpsStamp) / 1000);
     state.frames = 0; state.fpsStamp = now;
     document.getElementById("fps").textContent =
-      `预览帧率 ${state.fps.toFixed(0)} fps · 当前表情：${MOOD_NAME[mood]}`;
+      `预览帧率 ${state.fps.toFixed(0)} fps · 形象 ${state.persona + 1} · 当前表情：${MOOD_NAME[mood]}`;
   }
   requestAnimationFrame(frame);
 }
@@ -495,9 +529,8 @@ canvas.addEventListener("pointermove", e => {
   }
   if (pointer.committed) return;
   if (pointer.gesture === "h" && Math.abs(dx) >= 60) {
-    const browse = [Mood.Happy, Mood.Excited, Mood.Curious, Mood.Confused, Mood.Angry, Mood.Surprised, Mood.Sad, Mood.Sleepy, Mood.Dizzy];
-    state.browseIndex = (state.browseIndex + (dx > 0 ? 1 : browse.length - 1)) % browse.length;
-    react(browse[state.browseIndex], now, 3000); pointer.committed = true;
+    state.persona = (state.persona + 1) % 2;
+    pointer.committed = true;
   } else if (pointer.gesture === "v" && Math.abs(dy) >= 60) {
     react(dy < 0 ? Mood.Surprised : Mood.Sleepy, now, 3000); pointer.committed = true;
   } else if (pointer.gesture === "none" && now - pointer.time >= 650) {
@@ -507,6 +540,7 @@ canvas.addEventListener("pointermove", e => {
 function pointerUp() {
   const now = performance.now();
   if (pointer.down && !pointer.committed && pointer.gesture === "none") {
+    state.touchActiveUntil = now + 2200;
     if (pointer.pendingTap && now - pointer.pendingTap <= 280) { pointer.pendingTap = 0; react(Mood.Surprised, now); }
     else pointer.pendingTap = now;
   }

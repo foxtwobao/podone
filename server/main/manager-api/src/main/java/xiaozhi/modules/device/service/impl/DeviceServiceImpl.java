@@ -11,6 +11,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TimeZone;
@@ -138,6 +139,7 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
         deviceEntity.setAgentId(agentId);
         deviceEntity.setAppVersion(appVersion);
         deviceEntity.setMacAddress(macAddress);
+        deviceEntity.setPairedClientHash((String) cacheMap.get("client_hash"));
         deviceEntity.setUserId(user.getId());
         deviceEntity.setCreator(user.getId());
         deviceEntity.setAutoUpdate(1);
@@ -148,8 +150,133 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
         deviceDao.insert(deviceEntity);
 
         // 清理redis缓存、清除智能体设备数量缓存
-        redisUtils.delete(List.of(cacheDeviceKey, deviceKey, RedisKeys.getAgentDeviceCountById(agentId)));
+        List<String> keysToDelete = new ArrayList<>();
+        keysToDelete.add(cacheDeviceKey);
+        keysToDelete.add(deviceKey);
+        if (StringUtils.isNotBlank(agentId)) {
+            keysToDelete.add(RedisKeys.getAgentDeviceCountById(agentId));
+        }
+        redisUtils.delete(keysToDelete);
         return true;
+    }
+
+    @Override
+    public List<DeviceEntity> getAllUserDevices(Long userId) {
+        if (userId == null) {
+            return Collections.emptyList();
+        }
+        QueryWrapper<DeviceEntity> wrapper = new QueryWrapper<>();
+        wrapper.eq("user_id", userId).orderByDesc("create_date");
+        return baseDao.selectList(wrapper);
+    }
+
+    @Override
+    public Map<String, Object> previewActivation(String activationCode) {
+        String trimmed = StringUtils.trimToEmpty(activationCode);
+        if (!trimmed.matches("^\\d{6}$")) {
+            return Map.of("valid", false);
+        }
+        String deviceKey = RedisKeys.getOtaActivationCode(trimmed);
+        String cacheDeviceId = (String) redisUtils.get(deviceKey);
+        if (StringUtils.isBlank(cacheDeviceId)) {
+            return Map.of("valid", false);
+        }
+        String safeDeviceId = cacheDeviceId.replace(":", "_").toLowerCase();
+        String cacheDeviceKey = RedisKeys.getOtaDeviceActivationInfo(safeDeviceId);
+        Map<String, Object> cacheMap = JsonUtils.toStringObjectMap(redisUtils.get(cacheDeviceKey));
+        if (MapUtil.isEmpty(cacheMap) || !trimmed.equals(cacheMap.get("activation_code"))) {
+            return Map.of("valid", false);
+        }
+        if (selectById(cacheDeviceId) != null) {
+            return Map.of("valid", false, "reason", "already_activated");
+        }
+        Map<String, Object> preview = new HashMap<>();
+        preview.put("valid", true);
+        preview.put("board", StringUtils.defaultIfBlank((String) cacheMap.get("board"), "unknown"));
+        preview.put("appVersion", StringUtils.defaultString((String) cacheMap.get("app_version")));
+        String mac = StringUtils.defaultString((String) cacheMap.get("mac_address"));
+        preview.put("macMasked", maskMac(mac));
+        return preview;
+    }
+
+    @Override
+    public DeviceEntity activatePodForUser(Long userId, String activationCode, String alias, String ttsVoice) {
+        if (userId == null) {
+            throw new RenException(ErrorCode.USER_NOT_LOGIN);
+        }
+        String trimmedCode = StringUtils.trimToEmpty(activationCode);
+        if (StringUtils.isBlank(trimmedCode)) {
+            throw new RenException(ErrorCode.ACTIVATION_CODE_EMPTY);
+        }
+        String deviceKey = RedisKeys.getOtaActivationCode(trimmedCode);
+        String cacheDeviceId = (String) redisUtils.get(deviceKey);
+        if (StringUtils.isBlank(cacheDeviceId)) {
+            throw new RenException(ErrorCode.ACTIVATION_CODE_ERROR);
+        }
+        String deviceId = cacheDeviceId;
+        String safeDeviceId = deviceId.replace(":", "_").toLowerCase();
+        String cacheDeviceKey = RedisKeys.getOtaDeviceActivationInfo(safeDeviceId);
+        Map<String, Object> cacheMap = JsonUtils.toStringObjectMap(redisUtils.get(cacheDeviceKey));
+        if (MapUtil.isEmpty(cacheMap) || !trimmedCode.equals(cacheMap.get("activation_code"))) {
+            throw new RenException(ErrorCode.ACTIVATION_CODE_ERROR);
+        }
+        if (selectById(deviceId) != null) {
+            throw new RenException(ErrorCode.DEVICE_ALREADY_ACTIVATED);
+        }
+
+        String macAddress = (String) cacheMap.get("mac_address");
+        String board = (String) cacheMap.get("board");
+        String appVersion = (String) cacheMap.get("app_version");
+
+        Date currentTime = new Date();
+        DeviceEntity deviceEntity = new DeviceEntity();
+        deviceEntity.setId(deviceId);
+        deviceEntity.setBoard(board);
+        deviceEntity.setAgentId(null);
+        deviceEntity.setAppVersion(appVersion);
+        deviceEntity.setMacAddress(macAddress);
+        deviceEntity.setPairedClientHash((String) cacheMap.get("client_hash"));
+        deviceEntity.setAlias(StringUtils.isBlank(alias) ? null : alias.trim());
+        deviceEntity.setTtsVoice(StringUtils.isBlank(ttsVoice) ? null : ttsVoice.trim());
+        deviceEntity.setAllowIncomingCall(1);
+        deviceEntity.setAllowAsyncNotice(1);
+        deviceEntity.setDndEnabled(0);
+        deviceEntity.setUserId(userId);
+        deviceEntity.setCreator(userId);
+        deviceEntity.setAutoUpdate(1);
+        deviceEntity.setCreateDate(currentTime);
+        deviceEntity.setUpdater(userId);
+        deviceEntity.setUpdateDate(currentTime);
+        deviceEntity.setLastConnectedAt(currentTime);
+        deviceDao.insert(deviceEntity);
+
+        redisUtils.delete(List.of(cacheDeviceKey, deviceKey));
+        return deviceEntity;
+    }
+
+    @Override
+    public void adminUnbindDevice(String deviceId) {
+        if (StringUtils.isBlank(deviceId)) {
+            return;
+        }
+        DeviceEntity device = baseDao.selectById(deviceId);
+        if (device == null) {
+            return;
+        }
+        if (StringUtils.isNotBlank(device.getAgentId())) {
+            redisUtils.delete(RedisKeys.getAgentDeviceCountById(device.getAgentId()));
+        }
+        baseDao.deleteById(deviceId);
+        if (StringUtils.isNotBlank(device.getMacAddress())) {
+            deviceAddressBookService.deleteByMacAddresses(Collections.singletonList(device.getMacAddress()));
+        }
+    }
+
+    private static String maskMac(String mac) {
+        if (StringUtils.isBlank(mac) || mac.length() < 8) {
+            return mac;
+        }
+        return mac.substring(0, 5) + ":**:**:" + mac.substring(mac.length() - 2);
     }
 
     /**
@@ -218,7 +345,10 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
 
         // 检查是否启用认证并生成token
         String authEnabled = sysParamsService.getValue(Constant.SERVER_AUTH_ENABLED, true);
-        if ("true".equalsIgnoreCase(authEnabled)) {
+        if ("true".equalsIgnoreCase(authEnabled) && (deviceById == null
+                || deviceById.getPairedClientHash() == null
+                || DeviceClientBinding.matches(deviceById.getPairedClientHash(),
+                        DeviceClientBinding.fingerprint(clientId)))) {
             try {
                 // 生成token
                 String token = generateWebSocketToken(clientId, macAddress);
@@ -274,7 +404,7 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
                     deviceById.getId(), appVersion);
         } else {
             // 如果设备不存在，则生成激活码
-            DeviceReportRespDTO.Activation code = buildActivation(macAddress, deviceReport);
+            DeviceReportRespDTO.Activation code = buildActivation(macAddress, clientId, deviceReport);
             response.setActivation(code);
         }
 
@@ -451,6 +581,14 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
     }
 
     @Override
+    public String getPairedActivationCode(String deviceId, String clientId) {
+        Map<String, Object> pending = JsonUtils.toStringObjectMap(redisUtils.get(getDeviceCacheKey(deviceId)));
+        return pending != null && DeviceClientBinding.matches(
+                (String) pending.get("client_hash"), DeviceClientBinding.fingerprint(clientId))
+                        ? (String) pending.get("activation_code") : null;
+    }
+
+    @Override
     public Date getLatestLastConnectionTime(String agentId) {
         // 查询是否有缓存时间，有则返回
         Date cachedDate = (Date) redisUtils.get(RedisKeys.getAgentDeviceLastConnectedAtById(agentId));
@@ -478,12 +616,19 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
         return frontedUrl + "/#/bind?code=" + activationCode + "\n" + activationCode;
     }
 
-    public DeviceReportRespDTO.Activation buildActivation(String deviceId, DeviceReportReqDTO deviceReport) {
+    public DeviceReportRespDTO.Activation buildActivation(String deviceId, String clientId,
+            DeviceReportReqDTO deviceReport) {
         DeviceReportRespDTO.Activation code = new DeviceReportRespDTO.Activation();
+        String clientHash = DeviceClientBinding.fingerprint(clientId);
+        String dataKey = getDeviceCacheKey(deviceId);
+        Map<String, Object> pending = JsonUtils.toStringObjectMap(redisUtils.get(dataKey));
+        String cachedCode = pending == null ? null : (String) pending.get("activation_code");
+        String cachedClientHash = pending == null ? null : (String) pending.get("client_hash");
 
-        String cachedCode = geCodeByDeviceId(deviceId);
-
-        if (StringUtils.isNotBlank(cachedCode)) {
+        if (cachedClientHash != null && !DeviceClientBinding.matches(cachedClientHash, clientHash)) {
+            return null;
+        }
+        if (StringUtils.isNotBlank(cachedCode) && Objects.equals(cachedClientHash, clientHash)) {
             code.setCode(cachedCode);
             code.setMessage(buildActivationMessage(cachedCode));
             code.setChallenge(deviceId);
@@ -506,9 +651,11 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
 
             dataMap.put("deviceId", deviceId);
             dataMap.put("activation_code", newCode);
+            if (clientHash != null) {
+                dataMap.put("client_hash", clientHash);
+            }
 
             // 写入主数据 key
-            String dataKey = getDeviceCacheKey(deviceId);
             redisUtils.set(dataKey, dataMap);
 
             // 写入反查激活码 key

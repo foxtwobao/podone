@@ -8,6 +8,8 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -28,6 +30,9 @@ public class DeviceEntity {
     @Schema(description = "MAC地址")
     private String macAddress;
 
+    @JsonIgnore
+    private String pairedClientHash;
+
     @Schema(description = "最后连接时间")
     private Date lastConnectedAt;
 
@@ -45,6 +50,24 @@ public class DeviceEntity {
 
     @Schema(description = "固件版本号")
     private String appVersion;
+
+    @Schema(description = "设备专属TTS音色编码")
+    private String ttsVoice;
+
+    @Schema(description = "允许接收Bot主动来电(0关闭/1开启)")
+    private Integer allowIncomingCall;
+
+    @Schema(description = "允许播报异步结果与例行任务(0关闭/1开启)")
+    private Integer allowAsyncNotice;
+
+    @Schema(description = "是否启用夜间免打扰(0关闭/1开启)")
+    private Integer dndEnabled;
+
+    @Schema(description = "免打扰开始时间(HH:mm)")
+    private String dndStart;
+
+    @Schema(description = "免打扰结束时间(HH:mm)")
+    private String dndEnd;
 
     @Schema(description = "排序")
     private Integer sort;

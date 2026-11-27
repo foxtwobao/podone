@@ -69,6 +69,10 @@ async def handleHelloMessage(conn: "ConnectionHandler", msg_json):
             conn.client_aec = True
 
     await conn.websocket.send(json.dumps(conn.welcome_msg))
+    if getattr(conn, "peripheral", None):
+        if features and features.get("online_standby") and msg_json.get("state") == "standby":
+            conn.peripheral.standby = True
+        conn.peripheral.listen_for_events()
 
     # The device waits for the server hello before processing MCP messages.
     if features and features.get("mcp"):
