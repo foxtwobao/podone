@@ -193,6 +193,9 @@ uploadfile
 !main/manager-mobile/**/env/
 !main/manager-mobile/**/.env*
 !main/manager-mobile/**/*.json
+!main/pod-console/**/*.json
+!main/pod-console/src/lib/
+!main/pod-console/src/lib/**
 !main/xiaozhi-server/**/*.json
 !main/digital-human/**/*.json
 main/digital-human/wakeword_runtime/models
