@@ -285,13 +285,16 @@ async def _do_send_audio(conn: "ConnectionHandler", opus_packet, flow_control):
     flow_control["sequence"] = sequence + 1
 
 
-async def send_tts_message(conn: "ConnectionHandler", state, text=None):
+async def send_tts_message(conn: "ConnectionHandler", state, text=None, *, after=None):
     """发送 TTS 状态消息"""
     if text is None and state == "sentence_start":
         return
     message = {"type": "tts", "state": state, "session_id": conn.session_id}
     if text is not None:
         message["text"] = textUtils.check_emoji(text)
+
+    if after is not None:
+        message["after"] = after
 
     # TTS播放结束
     if state == "stop":
@@ -321,10 +324,10 @@ async def send_tts_message(conn: "ConnectionHandler", state, text=None):
     await conn.websocket.send(json.dumps(message))
 
 
-async def send_stt_message(conn: "ConnectionHandler", text):
+async def send_stt_message(conn: "ConnectionHandler", text, *, start_tts=True):
     """发送 STT 状态消息"""
     end_prompt_str = conn.config.get("end_prompt", {}).get("prompt")
-    if end_prompt_str and end_prompt_str == text:
+    if start_tts and end_prompt_str and end_prompt_str == text:
         await send_tts_message(conn, "start")
         return
 
@@ -347,9 +350,9 @@ async def send_stt_message(conn: "ConnectionHandler", text):
     await conn.websocket.send(
         json.dumps({"type": "stt", "text": stt_text, "session_id": conn.session_id})
     )
-    await send_tts_message(conn, "start")
-    # 发送start消息后客户端状态会处于说话中状态，同步服务端状态
-    conn.client_is_speaking = True
+    if start_tts:
+        await send_tts_message(conn, "start")
+        conn.client_is_speaking = True
 
 
 async def send_display_message(conn: "ConnectionHandler", text):

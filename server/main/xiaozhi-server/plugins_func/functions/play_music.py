@@ -122,32 +122,33 @@ def initialize_music_handler(conn: "ConnectionHandler"):
     return MUSIC_CACHE
 
 
-async def handle_music_command(conn: "ConnectionHandler", text):
-    initialize_music_handler(conn)
-    global MUSIC_CACHE
+def select_local_music(conn: "ConnectionHandler", song_name=None):
+    library = initialize_music_handler(conn)
+    if time.time() - library["scan_time"] > library["refresh_time"]:
+        library["music_files"], library["music_file_names"] = get_music_files(
+            library["music_dir"], library["music_ext"]
+        )
+        library["scan_time"] = time.time()
 
+    root = Path(library["music_dir"])
+    tracks = [track for track in library["music_files"] if (root / track).is_file()]
+    if not tracks:
+        return None
+    track = _find_best_match(song_name, tracks) if song_name else random.choice(tracks)
+    return root / track if track else None
+
+
+async def handle_music_command(conn: "ConnectionHandler", text):
     """处理音乐播放指令"""
     clean_text = re.sub(r"[^\w\s]", "", text).strip()
     conn.logger.bind(tag=TAG).debug(f"检查是否是音乐命令: {clean_text}")
-
-    # 尝试匹配具体歌名
-    if os.path.exists(MUSIC_CACHE["music_dir"]):
-        if time.time() - MUSIC_CACHE["scan_time"] > MUSIC_CACHE["refresh_time"]:
-            # 刷新音乐文件列表
-            MUSIC_CACHE["music_files"], MUSIC_CACHE["music_file_names"] = (
-                get_music_files(MUSIC_CACHE["music_dir"], MUSIC_CACHE["music_ext"])
-            )
-            MUSIC_CACHE["scan_time"] = time.time()
-
-        potential_song = _extract_song_name(clean_text)
-        if potential_song:
-            best_match = _find_best_match(potential_song, MUSIC_CACHE["music_files"])
-            if best_match:
-                conn.logger.bind(tag=TAG).info(f"找到最匹配的歌曲: {best_match}")
-                await play_local_music(conn, specific_file=best_match)
-                return True
-    # 检查是否是通用播放音乐命令
-    await play_local_music(conn)
+    name = _extract_song_name(clean_text)
+    match = select_local_music(conn, name)
+    if match and name:
+        conn.logger.bind(tag=TAG).info(f"找到最匹配的歌曲: {match.name}")
+    await play_local_music(
+        conn, specific_file=str(match.relative_to(MUSIC_CACHE["music_dir"])) if match else None
+    )
     return True
 
 

@@ -15,6 +15,9 @@ TAG = __name__
 
 
 async def handleAudioMessage(conn: "ConnectionHandler", pcm_frame):
+    peripheral = getattr(conn, "peripheral", None)
+    if peripheral and peripheral.standby and not peripheral.ring_from_standby:
+        return
     # 如果设备刚刚被唤醒，短暂忽略音频输入，避免唤醒播报回声污染 VAD 状态
     if hasattr(conn, "just_woken_up") and conn.just_woken_up:
         if not hasattr(conn, "vad_resume_task") or conn.vad_resume_task.done():
@@ -23,7 +26,7 @@ async def handleAudioMessage(conn: "ConnectionHandler", pcm_frame):
     # 当前片段是否有人说话
     have_voice = conn.vad.is_vad(conn, pcm_frame)
     # 服务端AEC功能需要实时触发打断
-    if conn.client_aec and have_voice:
+    if (conn.client_aec or getattr(conn, "peripheral", None)) and have_voice:
         if conn.client_is_speaking and conn.client_listen_mode != "manual":
             await handleAbortMessage(conn)
     # 设备长时间空闲检测，用于say goodbye
@@ -76,6 +79,10 @@ async def startToChat(conn: "ConnectionHandler", text, speaker=None):
         await check_bind_device(conn)
         return
 
+    if getattr(conn, "peripheral", None):
+        await conn.peripheral.submit(actual_text)
+        return
+
     # 如果当日的输出字数大于限定的字数
     if conn.max_output_size > 0:
         if check_device_output_limit(
@@ -107,6 +114,8 @@ async def startToChat(conn: "ConnectionHandler", text, speaker=None):
 async def no_voice_close_connect(conn: "ConnectionHandler", have_voice):
     if have_voice:
         conn.last_activity_time = time.time() * 1000
+        return
+    if getattr(conn, "peripheral", None):
         return
     # 只有在已经初始化过时间戳的情况下才进行超时检查
     if conn.last_activity_time > 0.0:

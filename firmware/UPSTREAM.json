@@ -3,7 +3,7 @@
     "repo": "https://github.com/78/xiaozhi-esp32.git",
     "tag": "v2.6.0",
     "commit": "4de00aed740595a8713b01f8332b9b2cf30685bc",
-    "patches": ["patches/xiaozhi-esp32-board-dir.patch"],
+    "patches": ["patches/xiaozhi-esp32-board-dir.patch", "patches/xiaozhi-esp32-online-standby.patch"],
     "lvgl": "9.5.0"
   },
   "zongzhu-bot": {

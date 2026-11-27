@@ -1,6 +1,10 @@
 # 小智 Reseller 接入实施方案
 
-状态：方案编制及代码对照复核完成，尚未实施。本文作为后续开发和验收依据。
+> [!IMPORTANT]
+> **2026-11-24 状态更新：本方案已由 [《Podone 接入 Botone 外设架构方案》](../../docs/BOTONE_INTEGRATION.md) 取代并冻结。**
+> 原因：Podone 已定位为 Botone 的物理语音外设，所有 LLM 对话、工具调度、记忆及 Reseller 用户授权闭环统一收敛至已集成 Reseller 的 Botone；Podone 不再单独维护 Web/H5 模型授权事务及本地 LLM/Intent/Memory/标题摘要调用。本方案中关于**「多用户轮次级凭证隔离、取消公共付费 Key（如公共 Minimax Key）静默回退、未授权播放本地离线提示音」**的安全与计费原则，已在 [BOTONE_INTEGRATION.md 第 4.4 节](../../docs/BOTONE_INTEGRATION.md) 中通过 Botone 按轮次透传用户个人 TokenONE Key 调用流式 TTS 的方式继承。
+
+状态：历史方案归档（由 `docs/BOTONE_INTEGRATION.md` 取代）。
 
 目标：所有已启用的云端模型调用使用所属用户的 Reseller 授权，模型请求由 Java 或 Python 直接发往 TokenONE / New API。保留硬件问答的流式处理和打断体验，取消公共模型 Key 及厂商凭证的静默回退。
 

@@ -65,11 +65,12 @@ async def main():
     # 添加 stdin 监控任务
     stdin_task = asyncio.create_task(monitor_stdin())
 
-    # 预热唤醒词音频编码缓存，让首条连接就命中
-    preheat_sr = int(
-        config.get("xiaozhi", {}).get("audio_params", {}).get("sample_rate", 16000)
-    )
-    asyncio.create_task(preheat_wakeup_audio_cache(sample_rate=preheat_sr))
+    if not config.get("botone", {}).get("url"):
+        # 预热唤醒词音频编码缓存，让首条连接就命中
+        preheat_sr = int(
+            config.get("xiaozhi", {}).get("audio_params", {}).get("sample_rate", 16000)
+        )
+        asyncio.create_task(preheat_wakeup_audio_cache(sample_rate=preheat_sr))
 
     # 启动全局GC管理器（5分钟清理一次）
     gc_manager = get_gc_manager(interval_seconds=300)
@@ -79,7 +80,7 @@ async def main():
     ws_server = WebSocketServer(config)
     ws_task = asyncio.create_task(ws_server.start())
     # 启动 Simple http 服务器
-    ota_server = SimpleHttpServer(config)
+    ota_server = SimpleHttpServer(config, ws_server.peripheral_sessions)
     ota_task = asyncio.create_task(ota_server.start())
 
     read_config_from_api = config.get("read_config_from_api", False)

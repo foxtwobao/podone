@@ -1,13 +1,14 @@
 # Podone 架构方案
 
-状态：方案，待确认后实施。日期：2026-11-23。
+状态：方案，2026-11-23 初版，2026-11-24 更新 Botone 外设接入架构。
 
-Podone 是面向自有硬件的语音终端项目。服务端基于定制的小智后端，模型调用走 TokenONE / New API，用户身份走 IDONE，模型授权走 Reseller。设备端按硬件型号分目录，首个固件是微雪 ESP32-S3-Touch-AMOLED-1.75C，用户侧体验参考 [zongzhu-bot](https://github.com/Liu-zhongxian/zongzhu-bot)：圆屏上一对会眨眼、跟手、跟姿态变化的眼睛，配字幕与朗读。
+Podone 是面向自有硬件的语音终端项目，作为 **Botone**（`/Volumes/ext/Projects/botone`）的物理语音与圆屏外设运行。服务端基于定制的小智后端负责设备连接与实时音频管道，智能体对话、工具编排、记忆与 Reseller 模型授权统一交由 Botone 承载（详见 [Botone 外设接入方案](BOTONE_INTEGRATION.md)）。模型与语音合成调用走 TokenONE / New API，用户身份走 IDONE，个人模型 Key 由 Botone 通过 Reseller 获取并按轮次透传。设备端按硬件型号分目录，首个固件是微雪 ESP32-S3-Touch-AMOLED-1.75C，用户侧体验参考 [zongzhu-bot](https://github.com/Liu-zhongxian/zongzhu-bot)：圆屏上一对会眨眼、跟手、跟姿态变化的眼睛，配字幕与朗读。
 
 ## 1 结论
 
-- 服务端以本地 `tokenone_xiaozhiserver` 的 `codex/idone-integration` 分支为基线迁入本仓库 `server/`，保留已完成的 IDONE 登录与 Qwen Omni 改动，不另起分支重做。
-- Reseller 鉴权按该仓库已写好的 [接入实施方案](../../tokenone_xiaozhiserver/docs/reseller-integration-plan.md) 实施，本文只引用不重写。该方案已完成代码对照复核，状态为未实施。
+- 服务端以本地 `tokenone_xiaozhiserver` 的 `codex/idone-integration` 分支为基线迁入本仓库 `server/`，保留已完成的 IDONE 登录。
+- **大脑与计费统一收敛至 Botone**（2026-11-24 决定）：不再在 Podone 内部独立实施完整的 Reseller 网页授权流与本地 LLM/记忆/意图体系，原 [接入实施方案](../server/docs/reseller-integration-plan.md) 由 [Botone 外设接入方案](BOTONE_INTEGRATION.md) 取代。首次接入时，Botone 基于其轻量 Pi Runtime 为用户自动初始化一个专属语音机器人（「波波」），绑定最快低延迟模型并关闭 Thinking，承接 Pod 的语音输入并通过内置车队工具（`list_fleet`、`message_bot`、`spawn_bot` 等）操作 Botone 中的所有机器人。
+- **多用户、多设备严格按个人计费（零公共付费 Key）**：Podone 本地仅运行离线免费组件（`SileroVAD` + `SenseVoiceSmall` ASR）；每轮对话由 Botone 调用 Reseller `POST /api/apps/keys/ensure` 获取设备所属用户的个人 TokenONE Key，在运行 Pi LLM 的同时将本轮临时凭证透传给 `xiaozhi-server` 调用 TokenONE 流式 TTS，取消一切公共付费 Key（如公共 Minimax Key）回退。
 - 固件以 [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 为上游基线，提交记录写入 `UPSTREAM.json`。表情、手势、姿态这层参考 zongzhu-bot 的 `main/boards/common/zongzhu/`（MIT），按板型适配后放在本仓库，不 fork zongzhu-bot 整体。
 - 首个固件的构建基线是 **ESP-IDF v6.0.3**。原定的 v5.5.5 在 2026-11-23 改掉：小智 v2.5.0 起要求 ESP-IDF 6.0.1 以上，zongzhu-bot 也用 6.0.1，同一条线更省事。
 - 多硬件通过固件仓库内的板型目录实现，服务端按设备上报的板型选择固件与能力，不按硬件拆服务。
@@ -79,19 +80,18 @@ podone/
 ### 保留的定制
 
 - IDONE 登录：Java 侧 OIDC 授权码与 PKCE，`sys_user` 保存 `(idone_issuer, idone_subject)`，Shiro 继续校验应用 Token 与账号状态。Web 与 H5 不再有本地注册和密码。
-- Qwen Omni：多模态输入、流式文本输出，以及先转录再意图识别的路径。Reseller 接入时这条路径必须纳入凭证覆盖，不能只改最终回答入口。
-- 设备侧认证保持小智原样：OTA 接口签发 HMAC token，WebSocket 用 `Device-ID`、`Client-ID`、`Authorization` 连接。设备不感知 IDONE 与 Reseller。
+- 设备侧认证保持小智原样：OTA 接口签发 HMAC token，WebSocket 用 `Device-ID`、`Client-ID`、`Authorization` 连接。设备不感知 IDONE、Botone 与 Reseller。
 
-### Reseller 接入
+### Botone 外设接入与统一 Reseller 计费
 
-实施以 [reseller-integration-plan.md](../../tokenone_xiaozhiserver/docs/reseller-integration-plan.md) 为准，迁入后路径为 `server/docs/reseller-integration-plan.md`。这里只复述几个会约束固件的决定：
+完整设计见 [docs/BOTONE_INTEGRATION.md](BOTONE_INTEGRATION.md)，核心约束如下：
 
-- Java 独占 Reseller 应用凭证，按设备、智能体、所属用户解析身份，调用 `POST /api/apps/keys/ensure`。Python 通过一个轻量内部接口按需取凭证，音频流不经 Java。
-- 一轮对话只取一次凭证，覆盖该轮的识别、意图、回答和分段合成；独立任务各自取。取消公共模型 Key 回退。
-- 实时取凭证总预算拟定 3 秒、零自动重试，待硬件基线测量后确定。超时由服务端结束本轮并下发本地可播报的错误提示。
-- 设备换绑或用户停用时服务端主动断开旧连接，固件按断线重连处理，不在固件里缓存任何用户身份。
+- **统一身份免配对**：`podone` 与 `botone` 共享同一个 IDONE OIDC 身份源。Java `manager-api` 按设备、所属用户解析 `(idone_issuer, idone_subject)` 下发给 Python `xiaozhi-server`；`botone` 外设网关通过 `oidcAccountSubject(issuer, subject)` 精确映射到本地用户与默认 Space。
+- **专属轻量 Pi 机器人承接对话**：首次接入时，`botone` 在用户默认 Space 下幂等创建专属语音 Bot「波波」（`spawnKey = "peripheral:podone"`），固定绑定低延迟快模型、关闭思考（`thinkingLevel: "off"`）、禁用自身沙箱电脑工具、开启车队管理权限（`manageOtherBots: true`），并在系统提示词中要求首字符输出情绪 Emoji 及纯口语短句。`podone` 关闭自身的 `Intent`、`Memory`、`VLLM`、`Omni` 以及 Java 标题生成。
+- **轮次级个人 Key 传递与流式 TTS**：`botone` 独占 Reseller 应用凭证。每轮语音请求进入 `botone` 外设网关时，由 `botone` 调用一次 `POST /api/apps/keys/ensure` 获取用户个人 TokenONE Key，一方面供 Pi Runtime 调用 LLM，另一方面在内部 SSE 流首包中透传给 `xiaozhi-server` 调用 TokenONE 网关流式 TTS。严禁使用任何公共付费模型或公共 TTS Key（如公共 Minimax Key）回退；未授权或额度耗尽时由 `xiaozhi-server` 播放本地静态错误提示音。
+- **设备换绑或用户停用**：服务端主动断开旧连接，固件按断线重连处理，不在固件里缓存任何用户身份。
 
-本期新增的唯一协议字段是服务端下发的表情与情绪状态，见第 7 节。其余设备消息沿用小智协议。
+本期新增的唯一设备协议字段是服务端下发的表情与情绪状态，见第 7 节。其余设备消息沿用小智协议。
 
 ## 6 固件
 
@@ -180,9 +180,9 @@ zongzhu-bot 用 ESP-IDF 6.0.1 构建，和当前基线同属 6.0 系列。移植
 | 1 迁入 | 复制 `tokenone_xiaozhiserver` 到 `server/`，核对构建与 lab 部署，补 `UPSTREAM.json` | 迁入后的服务端与源仓库行为一致，密钥未进仓 |
 | 2 表情固件 | 建立 `firmware/` 目录与 1.75C 板型，接入表情、字幕、触摸和姿态（2026-11-23 已在实板上达标，见板型 README） | 不连服务端时，触摸、倾斜、摇晃的反馈与参考项目一致 |
 | 3 链路接通 | 固件连接自有服务端，完成唤醒、对话、朗读，表情跟随状态 | 一轮问答全程走通，断线可重连 |
-| 4 Reseller | 按已有方案实施 Java 与 Python 的凭证传递 | 满足该方案第 9 节的验收，且第 3 阶段的硬件体验不回退 |
+| 4 Botone 外设接入与统一计费 | 按 [docs/BOTONE_INTEGRATION.md](BOTONE_INTEGRATION.md) 实施 `botone` 外设网关、专属语音 Bot「波波」自动初始化、`podone` `BotoneLLMProvider` 与轮次级 TokenONE 个人 Key 流式 TTS（取代原独立 Reseller 阶段） | 通过语音可直接对话、向 Botone 其他 Bot 派活、口头审批/急停；LLM 与云端流式 TTS 100% 走用户个人 TokenONE Key 计费，零公共付费 Key 回退，且第 3 阶段的硬件体验不回退 |
 
-阶段 0 和阶段 1 互不依赖，可以并行。阶段 4 的实施细节不在本文展开，阻塞项以 reseller 方案列出的三项为准：部署环境接受的授权检查粒度、实际启用的 ASR/TTS/Omni 与网关的兼容性、基线测量后的取凭证预算。
+阶段 0 和阶段 1 互不依赖，可以并行。阶段 4 的完整契约与分步验收见 [docs/BOTONE_INTEGRATION.md](BOTONE_INTEGRATION.md)。
 
 ## 9 待确认
 

@@ -39,6 +39,13 @@ async def load_config():
     default_config = read_config(default_config_path)
     custom_config = read_config(custom_config_path)
 
+    botone = custom_config.get("botone", {})
+    if botone.get("url"):
+        from core.providers.llm.botone.client import validate_config
+
+        validate_config(botone)
+        if not custom_config.get("manager-api", {}).get("url"):
+            raise ValueError("Botone requires manager-api for device ownership")
     if custom_config.get("manager-api", {}).get("url"):
         config = await get_config_from_api_async(custom_config)
     else:
@@ -84,6 +91,17 @@ async def get_config_from_api_async(config):
     # 如果服务器没有prompt_template，则从本地配置读取
     if not config_data.get("prompt_template"):
         config_data["prompt_template"] = config.get("prompt_template")
+    if config.get("botone", {}).get("url"):
+        if not auth_enabled:
+            raise ValueError("Enable server.auth.enabled in manager-api to issue device tokens")
+        defaults = read_config(get_project_dir() + "config.yaml")
+        defaults["VAD"]["SileroVAD"]["min_silence_duration_ms"] = 1100
+        local = merge_configs(defaults, config)
+        config_data["botone"] = config["botone"]
+        config_data["selected_module"] = {"VAD": "SileroVAD", "ASR": "FunASR"}
+        config_data["VAD"] = {"SileroVAD": local["VAD"]["SileroVAD"]}
+        config_data["ASR"] = {"FunASR": local["ASR"]["FunASR"]}
+        config_data["model_mode"] = "classic"
     return config_data
 
 

@@ -23,9 +23,12 @@
 #include "application.h"
 #include "audio_codec.h"
 #include "board.h"
+#include "crystal_gif_player.h"
+#include "crystal_persona_assets.h"
 #include "display/lcd_display.h"
 #include "eye_model.h"
 #include "mood_map.h"
+#include "settings.h"
 
 // Screen geometry for the eye UI. Large is the full-screen zero-text layout;
 // Small is reserved strictly for Wi-Fi provisioning, activation code, and errors.
@@ -55,6 +58,10 @@ public:
             lv_timer_delete(frame_timer_);
         if (performance_timer_)
             lv_timer_delete(performance_timer_);
+        if (crystal_buf_) {
+            lv_free(crystal_buf_);
+            crystal_buf_ = nullptr;
+        }
     }
 
     void SetupUI() override {
@@ -97,6 +104,13 @@ public:
             [](lv_event_t* e) { ++static_cast<EyeDisplay*>(lv_event_get_user_data(e))->refreshes_; },
             LV_EVENT_REFR_READY, this);
 
+        {
+            Settings settings("podone", false);
+            const int saved = settings.GetInt("persona", 0);
+            persona_ = (saved == 1) ? Persona::Crystal : Persona::Classic;
+        }
+        InitCrystalBuffer();
+
         ApplyMonochrome();
         ApplyLayout(Layout::Large);
         last_tick_ = lv_tick_get();
@@ -107,7 +121,8 @@ public:
                 static_cast<EyeDisplay*>(lv_timer_get_user_data(timer))->Render();
             },
             kFrameMs, this);
-        ESP_LOGI(kTag, "Zero-text EyeUI ready (%dx%d)", screen_.width, screen_.width);
+        ESP_LOGI(kTag, "Zero-text EyeUI ready (%dx%d), persona=%d", screen_.width, screen_.width,
+                 static_cast<int>(persona_));
     }
 
     // Re-derive mood from device state whenever status changes, without showing text.
@@ -193,10 +208,13 @@ public:
         }
     }
 
+    bool ScreenSleeping() const { return sleep_mode_.load(std::memory_order_relaxed); }
+
     void SetPowerSaveMode(bool on) override {
         sleep_mode_.store(on, std::memory_order_relaxed);
         if (setup_ui_called_) {
             DisplayLockGuard lock(this);
+            if (frame_timer_) lv_timer_set_period(frame_timer_, on ? 80 : kFrameMs);
             if (!on)
                 hud_peek_until_ = lv_tick_get() + 2000;
         }
@@ -297,8 +315,13 @@ public:
 
     // Real-time audio RMS levels [0..1] pushed from the board's audio codec.
     void SetAudioLevels(float input_rms, float output_rms) {
-        in_level_.store(std::clamp(input_rms, 0.0f, 1.0f), std::memory_order_relaxed);
-        out_level_.store(std::clamp(output_rms, 0.0f, 1.0f), std::memory_order_relaxed);
+        const float in_clamped = std::clamp(input_rms, 0.0f, 1.0f);
+        const float out_clamped = std::clamp(output_rms, 0.0f, 1.0f);
+        in_level_.store(in_clamped, std::memory_order_relaxed);
+        out_level_.store(out_clamped, std::memory_order_relaxed);
+        if (out_clamped > 0.012f) {
+            last_out_active_us_.store(esp_timer_get_time(), std::memory_order_relaxed);
+        }
     }
 
     // Motion inputs arrive from the IMU task; Render() consumes them on the LVGL task.
@@ -343,6 +366,7 @@ private:
     enum class Layout { Large, Small };
     enum class WifiState : uint8_t { Strong, Medium, Weak, Connecting, Offline };
     enum class Gesture { None, Horizontal, Vertical, Follow };
+    enum class Persona : uint8_t { Classic = 0, Crystal = 1, Count = 2 };
 
     EyeScreen screen_;
     const EyeScreen::Layout& Spec(Layout layout) const {
@@ -362,6 +386,7 @@ private:
     };
 
     struct VisualFrame {
+        Persona persona = Persona::Classic;
         DeviceState dev_state = kDeviceStateUnknown;
         eyes::Mood mood = eyes::Mood::Idle;
         WifiState wifi = WifiState::Strong;
@@ -370,6 +395,9 @@ private:
         bool muted = false;
         bool sleeping = false;
         bool show_system_text = false;
+        bool indicator_on = false;
+        bool turn_audio_started = false;
+        bool voice_playing = false;
         uint8_t hud_opa = 0;
         uint8_t blush_opa = 0;
         float mouth_amp = 0.0f;
@@ -412,7 +440,9 @@ private:
 
     // Audio envelope state
     std::atomic<float> in_level_{0}, out_level_{0};
+    std::atomic<int64_t> last_out_active_us_{0};
     float smooth_in_ = 0, smooth_out_ = 0;
+    bool turn_audio_started_ = false;
 
     // Telemetry state
     int battery_pct_ = 100;
@@ -447,7 +477,96 @@ private:
     lv_point_t press_point_{}, touch_point_{};
     uint32_t press_time_ = 0, pending_tap_ = 0;
     lv_point_t pending_tap_point_{};
-    size_t browse_index_ = 0;
+
+    // Persona switching & Persona 2 (Kintsugi Crystal Youth) pre-decoded PSRAM GIF players
+    Persona persona_ = Persona::Classic;
+    uint32_t persona_indicator_until_ = 0;
+    uint32_t crystal_touch_until_ = 0;
+    uint16_t* crystal_buf_ = nullptr;
+    lv_image_dsc_t crystal_img_dsc_{};
+    podone::CrystalGifPlayer idle_gif_player_;
+    podone::CrystalGifPlayer speak_gif_player_;
+    podone::CrystalGifPlayer* active_player_ = nullptr;
+    bool crystal_initialized_ = false;
+
+    void InitCrystalBuffer() {
+        using namespace podone::crystal_assets;
+        if (!crystal_buf_) {
+            crystal_buf_ = static_cast<uint16_t*>(lv_malloc(kWidth * kHeight * sizeof(uint16_t)));
+        }
+        if (!crystal_buf_) {
+            ESP_LOGE(kTag, "Failed to allocate crystal GIF buffer in LVGL pool");
+            return;
+        }
+        // Pre-decode both GIFs into PSRAM once at boot so runtime state changes take 0ms
+        speak_gif_player_.Open(kSpeakGif, sizeof(kSpeakGif), crystal_buf_, false, 0);
+        idle_gif_player_.Open(kIdleGif, sizeof(kIdleGif), crystal_buf_, false, 0);
+        active_player_ = &idle_gif_player_;
+
+        std::memset(&crystal_img_dsc_, 0, sizeof(crystal_img_dsc_));
+        crystal_img_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
+        crystal_img_dsc_.header.cf = LV_COLOR_FORMAT_RGB565;
+        crystal_img_dsc_.header.w = kWidth;
+        crystal_img_dsc_.header.h = kHeight;
+        crystal_img_dsc_.header.stride = kWidth * sizeof(uint16_t);
+        crystal_img_dsc_.data_size = kWidth * kHeight * sizeof(uint16_t);
+        crystal_img_dsc_.data = reinterpret_cast<const uint8_t*>(crystal_buf_);
+        crystal_initialized_ = false;
+    }
+
+    void SwitchPersona(int dir, uint32_t now) {
+        const int count = static_cast<int>(Persona::Count);
+        const int next = (static_cast<int>(persona_) + (dir > 0 ? 1 : count - 1)) % count;
+        persona_ = static_cast<Persona>(next);
+        persona_indicator_until_ = now + 2200;
+        reaction_until_ = 0;
+        crystal_initialized_ = false;
+        {
+            Settings settings("podone", true);
+            settings.SetInt("persona", next);
+        }
+        ESP_LOGI(kTag, "Persona switched -> %d", next);
+        InvalidateArea({0, 0, screen_.width - 1, screen_.width - 1});
+    }
+
+    void UpdateCrystalBuffer(uint32_t now, DeviceState dev_state, bool voice_playing, bool dimmed) {
+        if (!crystal_buf_)
+            return;
+        using namespace podone::crystal_assets;
+        const bool touch_glow =
+            !dimmed && (static_cast<int32_t>(crystal_touch_until_ - now) > 0);
+        const bool use_speak_player =
+            !dimmed && (voice_playing || touch_glow ||
+                        ((dev_state == kDeviceStateSpeaking || dev_state == kDeviceStateNotifying) &&
+                         turn_audio_started_));
+        podone::CrystalGifPlayer* player =
+            use_speak_player ? &speak_gif_player_ : &idle_gif_player_;
+        const uint8_t* target_data = use_speak_player ? kSpeakGif : kIdleGif;
+        const size_t target_size = use_speak_player ? sizeof(kSpeakGif) : sizeof(kIdleGif);
+
+        if (!crystal_initialized_ || active_player_ != player ||
+            player->is_dimmed() != dimmed) {
+            if (player->Open(target_data, target_size, crystal_buf_, dimmed, now)) {
+                active_player_ = player;
+                crystal_initialized_ = true;
+                InvalidateArea({0, 0, screen_.width - 1, screen_.width - 1});
+            }
+            return;
+        }
+
+        lv_area_t dirty{};
+        // When using speak_gif_player_, ONLY step lip-moving frames while actual voice audio is playing;
+        // during silent pauses or touch glow, hold Frame 0 (golden eyes lit, lips closed).
+        const bool stepped =
+            (use_speak_player && !voice_playing) ? player->ResetToFrame0(now, &dirty)
+                                                 : player->Step(now, &dirty);
+        if (stepped) {
+            const int32_t y_shift = (layout_ == Layout::Small) ? -56 : 0;
+            dirty.y1 += y_shift;
+            dirty.y2 += y_shift;
+            InvalidateArea(dirty);
+        }
+    }
 
     static bool IsSystemTextState(DeviceState s) {
         return s == kDeviceStateWifiConfiguring || s == kDeviceStateActivating ||
@@ -603,13 +722,17 @@ private:
             hud_peek_until_ = now + 2800;
             return;
         }
-        if (pt.y < 168) {
-            React(eyes::Mood::Happy, now, 2200);
-            return;
-        }
         if (pt.y > 308) {
             if (!IsSystemTextState(Application::GetInstance().GetDeviceState()) && on_chat_toggle_)
                 on_chat_toggle_();
+            return;
+        }
+        if (persona_ == Persona::Crystal) {
+            crystal_touch_until_ = now + 2200;
+            return;
+        }
+        if (pt.y < 168) {
+            React(eyes::Mood::Happy, now, 2200);
             return;
         }
         wink_side_ = pt.x < CenterX() ? 0 : 1;
@@ -638,9 +761,9 @@ private:
     }
 
     void PollTouch(uint32_t now) {
-        static constexpr int kLockPx = 14;
-        static constexpr int kSwipePx = 60;
-        static constexpr uint32_t kFollowAfterMs = 220;
+        static constexpr int kLockPx = 12;
+        static constexpr int kSwipePx = 42;
+        static constexpr uint32_t kFollowAfterMs = 360;
         static constexpr uint32_t kWarnPressMs = 620;
         static constexpr uint32_t kRingPressMs = 1080;
         static constexpr uint32_t kDoubleTapMs = 260;
@@ -669,9 +792,10 @@ private:
             gesture_ = Gesture::None;
             press_point_ = touch_point_;
             press_time_ = now;
+            const bool was_asleep = sleep_mode_.load(std::memory_order_relaxed);
             if (on_touch_)
                 on_touch_();
-            if (sleep_mode_.load(std::memory_order_relaxed)) {
+            if (was_asleep) {
                 if (on_sleep_request_)
                     on_sleep_request_(false);
                 else
@@ -691,6 +815,7 @@ private:
             if (pressed_ && !committed_ && gesture_ == Gesture::None && !quick_ring_open_) {
                 if (pending_tap_) {
                     pending_tap_ = 0;
+                    crystal_touch_until_ = now + 2200;
                     React(eyes::Mood::Surprised, now, 1800);
                 } else {
                     pending_tap_ = std::max<uint32_t>(now, 1);
@@ -707,19 +832,13 @@ private:
         const int dx = touch_point_.x - press_point_.x;
         const int dy = touch_point_.y - press_point_.y;
         if (gesture_ == Gesture::None && std::max(std::abs(dx), std::abs(dy)) >= kLockPx) {
-            if (now - press_time_ >= kFollowAfterMs)
+            if (persona_ == Persona::Classic && now - press_time_ >= kFollowAfterMs)
                 gesture_ = Gesture::Follow;
             else
                 gesture_ = std::abs(dx) >= std::abs(dy) ? Gesture::Horizontal : Gesture::Vertical;
         }
         if (gesture_ == Gesture::Horizontal && std::abs(dx) >= kSwipePx) {
-            using eyes::Mood;
-            static constexpr Mood kBrowse[] = {Mood::Happy,    Mood::Excited, Mood::Curious,
-                                               Mood::Confused, Mood::Angry,   Mood::Surprised,
-                                               Mood::Sad,      Mood::Sleepy,  Mood::Dizzy};
-            constexpr size_t n = sizeof(kBrowse) / sizeof(kBrowse[0]);
-            browse_index_ = (browse_index_ + (dx > 0 ? 1 : n - 1)) % n;
-            React(kBrowse[browse_index_], now, 2500);
+            SwitchPersona(dx < 0 ? 1 : -1, now);
             committed_ = true;
         } else if (gesture_ == Gesture::Vertical && std::abs(dy) >= kSwipePx) {
             if (press_point_.y < 100 && dy > 0) {
@@ -752,8 +871,10 @@ private:
     float BlinkFactor(uint32_t now, eyes::Mood mood) {
         using eyes::Mood;
         static constexpr uint32_t kClose = 70, kHold = 30, kOpen = 140;
-        const bool allowed = mood != Mood::Happy && mood != Mood::Sleepy && mood != Mood::Dizzy &&
-                             mood != Mood::Surprised;
+        const bool allowed = (persona_ == Persona::Crystal)
+                                 ? (mood != Mood::Sleepy)
+                                 : (mood != Mood::Happy && mood != Mood::Sleepy &&
+                                    mood != Mood::Dizzy && mood != Mood::Surprised);
         if (!blinking_) {
             if (static_cast<int32_t>(now - next_blink_) < 0 || !allowed)
                 return 1.0f;
@@ -965,32 +1086,53 @@ private:
             return;
         const int32_t cx = ox + CenterX(), cy = oy + CenterY();
         const float t = vis_.anim_tick * 0.06f;
+        const bool is_crystal = (vis_.persona == Persona::Crystal);
 
         if (vis_.sleeping) {
             const uint8_t opa = static_cast<uint8_t>(45 + 55 * (0.5f + 0.5f * std::sin(t * 1.3f)));
-            DrawPill(layer, cx, oy + 444, 8, 8, Hex(0x94a3b8), opa);
+            DrawPill(layer, cx, oy + 444, 8, 8, is_crystal ? Hex(0xfbbf24) : Hex(0x94a3b8), opa);
             return;
         }
         if (vis_.dev_state == kDeviceStateListening) {
             const float pulse = std::max(vis_.mouth_amp, 0.5f + 0.5f * std::sin(t * 4.2f));
             const int32_t w = 4 + static_cast<int32_t>(3 * pulse);
             const uint8_t opa = static_cast<uint8_t>(110 + 125 * pulse);
-            DrawArc(layer, cx, cy, 224, w, 0, 360, Hex(0x38bdf8), opa);
-        } else if (vis_.dev_state == kDeviceStateConnecting) {
-            DrawArc(layer, cx, cy, 224, 4, 0, 360, Hex(0xa78bfa), 48);
+            DrawArc(layer, cx, cy, 224, w, 0, 360, is_crystal ? Hex(0xfbbf24) : Hex(0x38bdf8), opa);
+        } else if (vis_.dev_state == kDeviceStateConnecting ||
+                   ((vis_.dev_state == kDeviceStateSpeaking ||
+                     vis_.dev_state == kDeviceStateNotifying) &&
+                    !vis_.turn_audio_started)) {
+            const lv_color_t c_main = is_crystal ? Hex(0xfbbf24) : Hex(0xa78bfa);
+            const lv_color_t c_sub = is_crystal ? Hex(0x94a3b8) : Hex(0xa78bfa);
+            DrawArc(layer, cx, cy, 224, 4, 0, 360, c_sub, 48);
             const int32_t a = static_cast<int32_t>(t * 165.0f) % 360;
-            DrawArc(layer, cx, cy, 224, 6, a, a + 105, Hex(0xa78bfa), 235);
-            DrawArc(layer, cx, cy, 224, 6, (a + 180) % 360, (a + 245) % 360, Hex(0xa78bfa), 210);
+            DrawArc(layer, cx, cy, 224, 6, a, a + 105, c_main, 235);
+            DrawArc(layer, cx, cy, 224, 6, (a + 180) % 360, (a + 245) % 360, c_sub, 210);
         } else if (vis_.dev_state == kDeviceStateSpeaking ||
                    vis_.dev_state == kDeviceStateNotifying) {
-            const float amp = std::max(vis_.mouth_amp, 0.35f + 0.45f * std::fabs(std::sin(t * 6.5f)));
+            const float amp = vis_.voice_playing ? (0.35f + 0.65f * vis_.mouth_amp) : 0.2f;
             const int32_t w = 4 + static_cast<int32_t>(3 * amp);
             const uint8_t opa = static_cast<uint8_t>(85 + 115 * amp);
-            DrawArc(layer, cx, cy, 224, w, 28, 152, Hex(0x34d399), opa);
-            DrawArc(layer, cx, cy, 224, w, 208, 332, Hex(0x34d399), opa);
+            const lv_color_t col = is_crystal ? Hex(0xfbbf24) : Hex(0x34d399);
+            DrawArc(layer, cx, cy, 224, w, 28, 152, col, opa);
+            DrawArc(layer, cx, cy, 224, w, 208, 332, col, opa);
         } else if (vis_.dev_state == kDeviceStateFatalError) {
             const uint8_t opa = static_cast<uint8_t>(100 + 135 * std::fabs(std::sin(t * 3.0f)));
             DrawArc(layer, cx, cy, 224, 5, 225, 315, Hex(0xf87171), opa);
+        }
+    }
+
+    void DrawPersonaIndicator(lv_layer_t* layer, int32_t ox, int32_t oy) const {
+        if (!vis_.indicator_on || vis_.show_system_text)
+            return;
+        const int32_t cx = ox + CenterX();
+        const int32_t iy = oy + 434;
+        for (int i = 0; i < static_cast<int>(Persona::Count); ++i) {
+            const bool active = (static_cast<int>(vis_.persona) == i);
+            const lv_color_t col =
+                active ? (i == 1 ? Hex(0xfbbf24) : Hex(0x38bdf8)) : Hex(0x475569);
+            DrawPill(layer, cx + (i == 0 ? -10 : 10), iy, active ? 10 : 6, 6, col,
+                     active ? 240 : 140);
         }
     }
 
@@ -1099,35 +1241,50 @@ private:
         const int32_t my = oy + 360;
         const float t = vis_.mouth_tick * 0.02f;
         if (vis_.dev_state == kDeviceStateListening) {
-            const float drive = 0.25f + 0.75f * std::max(vis_.mouth_amp, 0.25f);
+            const bool active_mic = (vis_.mouth_amp > 0.025f);
+            const float drive = active_mic ? std::min(1.0f, 0.2f + 0.95f * vis_.mouth_amp) : 0.0f;
             for (int i = 0; i < 7; ++i) {
                 const float env = 1.0f - std::abs(i - 3) * 0.2f;
-                const float osc = std::fabs(std::sin(t * 7.5f + i * 1.1f) * std::cos(t * 3.1f + i));
-                const int32_t h = std::max<int32_t>(6, std::lround((8 + 28 * drive * osc) * env));
-                DrawPill(layer, cx + (i - 3) * 14, my, 6, h, Hex(0x38bdf8), 240);
+                const float osc =
+                    active_mic ? std::fabs(std::sin(t * 7.5f + i * 1.1f) * std::cos(t * 3.1f + i))
+                               : 0.0f;
+                const int32_t h =
+                    active_mic ? std::max<int32_t>(6, std::lround((7 + 28 * drive * osc) * env)) : 6;
+                DrawPill(layer, cx + (i - 3) * 14, my, 6, h, Hex(0x38bdf8),
+                         active_mic ? 240 : 175);
             }
-        } else if (vis_.dev_state == kDeviceStateSpeaking ||
-                   vis_.dev_state == kDeviceStateNotifying) {
+        } else if ((vis_.dev_state == kDeviceStateSpeaking ||
+                    vis_.dev_state == kDeviceStateNotifying) &&
+                   vis_.turn_audio_started) {
             if (vis_.mood == eyes::Mood::Surprised) {
-                const int32_t r = 11 + static_cast<int32_t>(6 * std::max(vis_.mouth_amp,
-                                  static_cast<float>(std::fabs(std::sin(t * 8.0f)))));
+                const int32_t r =
+                    11 + static_cast<int32_t>(6 * (vis_.voice_playing ? vis_.mouth_amp : 0.0f));
                 DrawArc(layer, cx, my, static_cast<uint16_t>(r), 5, 0, 360, Hex(0x34d399), 240);
             } else {
                 const lv_color_t col = vis_.mood == eyes::Mood::Angry
                                            ? Hex(0xfb923c)
                                            : (vis_.mood == eyes::Mood::Happy ? Hex(0xf472b6)
                                                                               : Hex(0x34d399));
-                const float drive = 0.25f + 0.75f * std::max(vis_.mouth_amp, 0.35f);
+                const float drive =
+                    vis_.voice_playing ? std::min(1.0f, 0.22f + 0.95f * vis_.mouth_amp) : 0.0f;
                 for (int i = 0; i < 9; ++i) {
                     const float bias = 1.0f - std::abs(i - 4) * 0.16f;
-                    const float osc = std::fabs(std::sin(t * 10.0f + i * 0.9f));
-                    const int32_t h = std::max<int32_t>(6, std::lround((8 + 30 * drive * osc) * bias));
+                    const float osc =
+                        vis_.voice_playing ? std::fabs(std::sin(t * 10.0f + i * 0.9f)) : 0.0f;
+                    const int32_t h =
+                        vis_.voice_playing
+                            ? std::max<int32_t>(6, std::lround((8 + 30 * drive * osc) * bias))
+                            : 6;
                     const int32_t dy =
                         vis_.mood == eyes::Mood::Happy ? -std::abs(i - 4) * 2 : 0;
-                    DrawPill(layer, cx + (i - 4) * 13, my + dy, 6, h, col, 245);
+                    DrawPill(layer, cx + (i - 4) * 13, my + dy, 6, h, col,
+                             vis_.voice_playing ? 245 : 170);
                 }
             }
-        } else if (vis_.dev_state == kDeviceStateConnecting) {
+        } else if (vis_.dev_state == kDeviceStateConnecting ||
+                   ((vis_.dev_state == kDeviceStateSpeaking ||
+                     vis_.dev_state == kDeviceStateNotifying) &&
+                    !vis_.turn_audio_started)) {
             for (int i = -1; i <= 1; ++i) {
                 const float s = std::max(0.0f, std::sin(t * 4.2f - i * 0.6f));
                 const int32_t dy = -static_cast<int32_t>(s * 8.0f);
@@ -1212,14 +1369,28 @@ private:
         lv_obj_get_coords(canvas_, &origin);
         const int32_t ox = origin.x1, oy = origin.y1;
 
-        DrawOuterHalo(layer, ox, oy);
-        for (const auto& g : geom_) {
-            if (ClipIntersects(layer, g.box, ox, oy))
-                DrawEye(layer, g, ox, oy);
+        if (vis_.persona == Persona::Crystal && crystal_buf_) {
+            lv_draw_image_dsc_t img_dsc;
+            lv_draw_image_dsc_init(&img_dsc);
+            img_dsc.src = &crystal_img_dsc_;
+            const int32_t y_shift = vis_.show_system_text ? -56 : 0;
+            const lv_area_t area = {
+                ox, oy + y_shift,
+                ox + podone::crystal_assets::kWidth - 1,
+                oy + y_shift + podone::crystal_assets::kHeight - 1};
+            lv_draw_image(layer, &img_dsc, &area);
+            DrawOuterHalo(layer, ox, oy);
+        } else {
+            DrawOuterHalo(layer, ox, oy);
+            for (const auto& g : geom_) {
+                if (ClipIntersects(layer, g.box, ox, oy))
+                    DrawEye(layer, g, ox, oy);
+            }
+            DrawBlushAndMouth(layer, ox, oy);
         }
-        DrawBlushAndMouth(layer, ox, oy);
         DrawTopTelemetry(layer, ox, oy);
         DrawBottomCharging(layer, ox, oy);
+        DrawPersonaIndicator(layer, ox, oy);
         DrawQuickRing(layer, ox, oy);
 
         const int64_t spent = esp_timer_get_time() - start;
@@ -1287,7 +1458,36 @@ private:
         max_gap_ms_ = std::max(max_gap_ms_, gap);
 
         PollTouch(now);
-        const auto mood = CurrentMood(now);
+        if (sleep_mode_.load(std::memory_order_relaxed)) return;
+
+        // Smooth audio envelopes (fast attack, smooth decay) with staleness guard
+        const float raw_in = in_level_.load(std::memory_order_relaxed);
+        const bool out_fresh =
+            (esp_timer_get_time() - last_out_active_us_.load(std::memory_order_relaxed)) <= 70000;
+        const float raw_out = out_fresh ? out_level_.load(std::memory_order_relaxed) : 0.0f;
+        smooth_in_ += (raw_in - smooth_in_) * (raw_in > smooth_in_ ? 0.55f : 0.22f);
+        smooth_out_ += (raw_out - smooth_out_) * (raw_out > smooth_out_ ? 0.55f : 0.32f);
+        if (!out_fresh && smooth_out_ < 0.02f)
+            smooth_out_ = 0.0f;
+
+        const auto dev_state = Application::GetInstance().GetDeviceState();
+        const bool in_speak_state =
+            (dev_state == kDeviceStateSpeaking || dev_state == kDeviceStateNotifying);
+        if (!in_speak_state) {
+            turn_audio_started_ = false;
+        } else if (smooth_out_ > 0.022f) {
+            turn_audio_started_ = true;
+        }
+        const bool voice_playing = in_speak_state && (smooth_out_ > 0.02f);
+
+        auto mood = CurrentMood(now);
+        if (in_speak_state && !turn_audio_started_ && !has_llm_mood_) {
+            mood = eyes::Mood::Thinking;
+        } else if (in_speak_state && turn_audio_started_ && !voice_playing &&
+                   mood == eyes::Mood::Speaking) {
+            mood = eyes::Mood::Idle;
+        }
+
         const auto& spec = Spec(layout_);
         UpdateGaze(now, dt, mood, spec.box_y + spec.center_y);
         const float blink = BlinkFactor(now, mood);
@@ -1296,12 +1496,6 @@ private:
         const float k = eyes::Ease(dt, mood == eyes::Mood::Dizzy ? 16 : 11);
         face_.left = eyes::Mix(face_.left, target.left, k);
         face_.right = eyes::Mix(face_.right, target.right, k);
-
-        // Smooth audio envelopes (fast attack, smooth decay)
-        const float raw_in = in_level_.load(std::memory_order_relaxed);
-        const float raw_out = out_level_.load(std::memory_order_relaxed);
-        smooth_in_ += (raw_in - smooth_in_) * (raw_in > smooth_in_ ? 0.55f : 0.18f);
-        smooth_out_ += (raw_out - smooth_out_) * (raw_out > smooth_out_ ? 0.55f : 0.18f);
 
         // Smooth HUD, blush, and quick-ring opacities
         const bool peeking = static_cast<int32_t>(hud_peek_until_ - now) > 0 || quick_ring_open_;
@@ -1313,26 +1507,29 @@ private:
 
         const float half = eyes::kHomeX * spec.scale;
         const bool dimmed = sleep_mode_.load(std::memory_order_relaxed);
-        const float blink_l = (wink_side_ == 0 && static_cast<int32_t>(wink_until_ - now) > 0)
-                                  ? 0.08f
-                                  : blink;
-        const float blink_r = (wink_side_ == 1 && static_cast<int32_t>(wink_until_ - now) > 0)
-                                  ? 0.08f
-                                  : blink;
-        const EyeGeom next[2] = {
-            ComputeEye(face_.left, CenterX() - half, spec.center_y, spec.scale, blink_l, now, 0,
-                       dimmed),
-            ComputeEye(face_.right, CenterX() + half, spec.center_y, spec.scale, blink_r, now, 1,
-                       dimmed)};
-        for (int i = 0; i < 2; ++i) {
-            if (!(next[i] == geom_[i])) {
-                Invalidate(geom_[i].box, next[i].box);
-                geom_[i] = next[i];
+
+        if (persona_ == Persona::Crystal && crystal_buf_) {
+            UpdateCrystalBuffer(now, dev_state, voice_playing, dimmed);
+        } else {
+            const float blink_l =
+                (wink_side_ == 0 && static_cast<int32_t>(wink_until_ - now) > 0) ? 0.08f : blink;
+            const float blink_r =
+                (wink_side_ == 1 && static_cast<int32_t>(wink_until_ - now) > 0) ? 0.08f : blink;
+            const EyeGeom next[2] = {
+                ComputeEye(face_.left, CenterX() - half, spec.center_y, spec.scale, blink_l, now, 0,
+                           dimmed),
+                ComputeEye(face_.right, CenterX() + half, spec.center_y, spec.scale, blink_r, now,
+                           1, dimmed)};
+            for (int i = 0; i < 2; ++i) {
+                if (!(next[i] == geom_[i])) {
+                    Invalidate(geom_[i].box, next[i].box);
+                    geom_[i] = next[i];
+                }
             }
         }
 
         // Update visual state and invalidate only affected regions
-        const auto dev_state = Application::GetInstance().GetDeviceState();
+        vis_.persona = persona_;
         vis_.dev_state = dev_state;
         vis_.mood = mood;
         vis_.wifi = wifi_state_;
@@ -1341,6 +1538,9 @@ private:
         vis_.muted = muted_state_;
         vis_.sleeping = dimmed;
         vis_.show_system_text = (layout_ == Layout::Small);
+        vis_.indicator_on = (static_cast<int32_t>(persona_indicator_until_ - now) > 0);
+        vis_.turn_audio_started = turn_audio_started_;
+        vis_.voice_playing = voice_playing;
         vis_.hud_opa = static_cast<uint8_t>(std::lround(hud_alpha_ * 255.0f));
         vis_.blush_opa = static_cast<uint8_t>(std::lround(blush_alpha_ * 72.0f));
         vis_.mouth_amp = (dev_state == kDeviceStateListening) ? smooth_in_ : smooth_out_;
@@ -1348,34 +1548,43 @@ private:
         vis_.mouth_tick = now / 20;
         vis_.quick_ring_opa = static_cast<uint8_t>(std::lround(quick_ring_anim_ * 255.0f));
 
+        if (vis_.persona != prev_vis_.persona) {
+            InvalidateArea({0, 0, screen_.width - 1, screen_.width - 1});
+        }
+        if (vis_.indicator_on != prev_vis_.indicator_on) {
+            InvalidateArea({CenterX() - 24, 426, CenterX() + 24, 444});
+        }
+
         // 1. Quick ring full-overlay invalidation only while visible/animating
         if (vis_.quick_ring_opa != prev_vis_.quick_ring_opa ||
             (vis_.quick_ring_opa > 0 && vis_.muted != prev_vis_.muted)) {
             InvalidateArea({0, 0, screen_.width - 1, screen_.width - 1});
         }
 
-        // 2. Blush patches
-        if (vis_.blush_opa != prev_vis_.blush_opa) {
-            InvalidateArea({CenterX() - 150, 276, CenterX() - 98, 308});
-            InvalidateArea({CenterX() + 98, 276, CenterX() + 150, 308});
-        }
+        if (vis_.persona == Persona::Classic) {
+            // 2. Blush patches
+            if (vis_.blush_opa != prev_vis_.blush_opa) {
+                InvalidateArea({CenterX() - 150, 276, CenterX() - 98, 308});
+                InvalidateArea({CenterX() + 98, 276, CenterX() + 150, 308});
+            }
 
-        // 3. Voice mouth region (50Hz only while active)
-        const bool mouth_active =
-            !vis_.show_system_text &&
-            (dev_state == kDeviceStateListening || dev_state == kDeviceStateSpeaking ||
-             dev_state == kDeviceStateNotifying || dev_state == kDeviceStateConnecting ||
-             mood == eyes::Mood::Happy || mood == eyes::Mood::Excited);
-        const lv_area_t mouth_box =
-            mouth_active ? lv_area_t{CenterX() - 80, 330, CenterX() + 80, 392}
-                         : lv_area_t{0, 0, -1, -1};
-        const bool mouth_anim =
-            dev_state == kDeviceStateListening || dev_state == kDeviceStateSpeaking ||
-            dev_state == kDeviceStateNotifying || dev_state == kDeviceStateConnecting;
-        if (mouth_anim || memcmp(&mouth_box, &prev_mouth_box_, sizeof(mouth_box)) != 0 ||
-            vis_.mood != prev_vis_.mood) {
-            Invalidate(prev_mouth_box_, mouth_box);
-            prev_mouth_box_ = mouth_box;
+            // 3. Voice mouth region (50Hz only while active)
+            const bool mouth_active =
+                !vis_.show_system_text &&
+                (dev_state == kDeviceStateListening || dev_state == kDeviceStateSpeaking ||
+                 dev_state == kDeviceStateNotifying || dev_state == kDeviceStateConnecting ||
+                 mood == eyes::Mood::Happy || mood == eyes::Mood::Excited);
+            const lv_area_t mouth_box =
+                mouth_active ? lv_area_t{CenterX() - 80, 330, CenterX() + 80, 392}
+                             : lv_area_t{0, 0, -1, -1};
+            const bool mouth_anim =
+                dev_state == kDeviceStateListening || dev_state == kDeviceStateSpeaking ||
+                dev_state == kDeviceStateNotifying || dev_state == kDeviceStateConnecting;
+            if (mouth_anim || memcmp(&mouth_box, &prev_mouth_box_, sizeof(mouth_box)) != 0 ||
+                vis_.mood != prev_vis_.mood) {
+                Invalidate(prev_mouth_box_, mouth_box);
+                prev_mouth_box_ = mouth_box;
+            }
         }
 
         // 4. Outer halo + top/bottom telemetry (~16Hz when animated, 0 cost when Idle)
@@ -1384,10 +1593,13 @@ private:
         const bool top_active =
             vis_.hud_opa > 6 || vis_.wifi != WifiState::Strong || vis_.charging ||
             vis_.battery_pct <= 20 || vis_.muted || dev_state == kDeviceStateListening;
+        const bool halo_anim_bands = (vis_.persona == Persona::Classic) && halo_active &&
+                                     (vis_.anim_tick != prev_vis_.anim_tick);
         const bool halo_changed =
-            (vis_.dev_state != prev_vis_.dev_state) || (vis_.sleeping != prev_vis_.sleeping) ||
-            (vis_.show_system_text != prev_vis_.show_system_text) ||
-            (halo_active && vis_.anim_tick != prev_vis_.anim_tick);
+            (vis_.dev_state != prev_vis_.dev_state) ||
+            (vis_.turn_audio_started != prev_vis_.turn_audio_started) ||
+            (vis_.sleeping != prev_vis_.sleeping) ||
+            (vis_.show_system_text != prev_vis_.show_system_text) || halo_anim_bands;
         if (halo_changed) {
             InvalidateOuterHaloBands();
         } else {

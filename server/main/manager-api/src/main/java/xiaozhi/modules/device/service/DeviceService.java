@@ -31,6 +31,26 @@ public interface DeviceService extends BaseService<DeviceEntity> {
     List<DeviceEntity> getUserDevices(Long userId, String agentId);
 
     /**
+     * 获取用户名下所有设备（不区分智能体）
+     */
+    List<DeviceEntity> getAllUserDevices(Long userId);
+
+    /**
+     * 预览激活码对应的待绑定硬件信息（不消费激活码）
+     */
+    Map<String, Object> previewActivation(String activationCode);
+
+    /**
+     * 直接按用户激活绑定 Pod（无需依赖智能体）
+     */
+    DeviceEntity activatePodForUser(Long userId, String activationCode, String alias, String ttsVoice);
+
+    /**
+     * 管理员强制解绑任意设备
+     */
+    void adminUnbindDevice(String deviceId);
+
+    /**
      * 获取用户指定智能体的设备列表（带时区处理），
      */
     List<UserShowDeviceListVO> getUserDeviceList(Long userId, String agentId);
@@ -100,6 +120,8 @@ public interface DeviceService extends BaseService<DeviceEntity> {
      * @return 激活码
      */
     String geCodeByDeviceId(String deviceId);
+
+    String getPairedActivationCode(String deviceId, String clientId);
 
     /**
      * 获取这个智能体设备理的最近的最后连接时间
