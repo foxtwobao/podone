@@ -691,3 +691,16 @@ def get_system_error_response(config: dict) -> str:
         str: 系统错误时的回复
     """
     return config.get("system_error_response", "主人，小智现在有点忙，我们稍后再试吧。")
+
+
+def normalize_ws_headers(raw_headers) -> dict[str, str]:
+    """将 websockets Headers（可能含重复键，如多层反代的 Via）安全转为小写扁平字典"""
+    if raw_headers is None:
+        return {}
+    if hasattr(raw_headers, "raw_items"):
+        result: dict[str, str] = {}
+        for k, v in raw_headers.raw_items():
+            kl = k.lower()
+            result[kl] = f"{result[kl]}, {v}" if kl in result else v
+        return result
+    return {str(k).lower(): v for k, v in dict(raw_headers).items()}
