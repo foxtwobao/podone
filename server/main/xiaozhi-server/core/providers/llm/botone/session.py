@@ -693,7 +693,7 @@ class PeripheralSession:
             while (item := await to_speak.get()) is not None:
                 sentence, credentials = item
                 if first:
-                    await textUtils.get_emotion(self.conn, sentence[:1])
+                    await textUtils.get_emotion(self.conn, sentence)
                     first = False
                 await self._synthesize(sentence, credentials)
 

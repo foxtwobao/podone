@@ -32,6 +32,39 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(sentences(first + "还有")), [(first, "还有")])
         self.assertEqual(list(sentences("甲" * 121)), [("甲" * 120, "甲")])
 
+    async def test_chat_sends_emotion_from_first_streamed_sentence(self):
+        credentials = {"model": "speech", "voice": "voice-1"}
+        conn = SimpleNamespace(
+            config={"botone": {"local_tts": credentials}},
+            session_id="pod-session",
+            logger=Mock(),
+            websocket=SimpleNamespace(send=AsyncMock()),
+        )
+        session = PeripheralSession(conn)
+        session.owner = {"voiceSettings": {"chatModel": "chat"}}
+        session._restart_events = Mock()
+        session._synthesize = AsyncMock()
+        whitespace = "\n  "
+        first = "😢 " + "我知道你现在心里不好受" * 5 + "。"
+        second = "😊 我会陪着你。"
+
+        async def frames(_action, _payload):
+            yield "session_meta", {"runId": "run", "threadId": "thread", "cursor": 1}
+            yield "text_delta", {"text": whitespace}
+            yield "text_delta", {"text": first + second}
+            yield "done", {"status": "run.completed"}
+
+        session.client = SimpleNamespace(stream=frames)
+
+        await session._chat("你能做个难过的表情吗？", {"subject": "owner"})
+
+        conn.websocket.send.assert_awaited_once()
+        self.assertEqual(json.loads(conn.websocket.send.await_args.args[0]), {
+            "type": "llm", "text": "😢", "emotion": "sad", "session_id": "pod-session",
+        })
+        self.assertEqual([call.args for call in session._synthesize.await_args_list],
+                         [(whitespace + first, credentials), (second, credentials)])
+
     async def test_botone_silence_default_accepts_local_override(self):
         config = {
             "botone": {"url": "https://bot.example.test"},
