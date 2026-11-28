@@ -6,27 +6,95 @@ if TYPE_CHECKING:
 
 TAG = __name__
 EMOJI_MAP = {
-    "😂": "funny",
-    "😭": "crying",
-    "😠": "angry",
-    "😔": "sad",
-    "😍": "loving",
-    "😲": "surprised",
-    "😱": "shocked",
-    "🤔": "thinking",
-    "😌": "relaxed",
-    "😴": "sleepy",
-    "😜": "silly",
-    "🙄": "confused",
-    "😶": "neutral",
+    # 开心 / 友好
     "🙂": "happy",
+    "😊": "happy",
+    "☺": "happy",
+    "😀": "happy",
+    "😃": "happy",
+    "😄": "happy",
+    "😁": "happy",
     "😆": "laughing",
-    "😳": "embarrassed",
+    "🥰": "loving",
+    "😍": "loving",
+    "🤗": "happy",
+    "🤭": "happy",
     "😉": "winking",
-    "😎": "cool",
-    "🤤": "delicious",
     "😘": "kissy",
+    "😋": "delicious",
+    "🤤": "delicious",
+    "😇": "happy",
+    # 兴奋 / 酷
+    "🤩": "excited",
+    "🥳": "excited",
+    "😎": "cool",
+    "🎉": "excited",
+    "🙌": "excited",
+    # 好奇 / 自信
+    "🧐": "curious",
+    "🤨": "curious",
     "😏": "confident",
+    "🤓": "curious",
+    "👀": "curious",
+    # 思考
+    "🤔": "thinking",
+    # 困惑 / 尴尬
+    "🙄": "confused",
+    "😕": "confused",
+    "🙁": "confused",
+    "🤷": "confused",
+    "😳": "embarrassed",
+    "😅": "embarrassed",
+    "😬": "embarrassed",
+    "😓": "embarrassed",
+    "😥": "confused",
+    "😰": "confused",
+    # 生气
+    "😠": "angry",
+    "😡": "angry",
+    "🤬": "angry",
+    "😤": "angry",
+    # 惊讶 / 震惊
+    "😲": "surprised",
+    "😮": "surprised",
+    "😯": "surprised",
+    "😱": "shocked",
+    "🤯": "shocked",
+    "😨": "shocked",
+    "🙀": "shocked",
+    # 难过 / 委屈 / 哭泣
+    "😔": "sad",
+    "😢": "sad",
+    "🥺": "sad",
+    "🥹": "sad",
+    "😞": "sad",
+    "😟": "sad",
+    "☹": "sad",
+    "😣": "sad",
+    "😖": "sad",
+    "😫": "sad",
+    "😩": "sad",
+    "😿": "sad",
+    "💔": "sad",
+    "😭": "crying",
+    # 困倦 / 放松
+    "😴": "sleepy",
+    "🥱": "sleepy",
+    "😪": "sleepy",
+    "😌": "relaxed",
+    # 搞怪 / 晕眩
+    "😂": "funny",
+    "🤣": "funny",
+    "😜": "silly",
+    "😝": "silly",
+    "🤪": "silly",
+    "🙃": "silly",
+    "😵": "dizzy",
+    "🥴": "dizzy",
+    # 中性
+    "😶": "neutral",
+    "😐": "neutral",
+    "😑": "neutral",
 }
 EMOJI_RANGES = [
     (0x1F600, 0x1F64F),
@@ -123,5 +191,7 @@ def is_emoji(char):
 
 
 def check_emoji(text):
-    """去除文本中的所有emoji表情"""
-    return "".join(char for char in text if not is_emoji(char) and char != "\n")
+    """去除文本中的所有emoji表情及变体选择符"""
+    return "".join(
+        char for char in text if not is_emoji(char) and char not in {"\n", "\ufe0f", "\u200d"}
+    )
