@@ -1,3 +1,3 @@
 # 生产构建，叠加在 sdkconfig.defaults 之上。用 firmware/scripts/build.sh --profile prod 选择。
 # 设备不信任 Caddy 本地 CA，测试环境走 HTTP；生产地址是公网证书，走 HTTPS。
-CONFIG_OTA_URL="https://pod.agentone.work/xiaozhi/ota/"
+CONFIG_OTA_URL="https://pod.bot.agentone.work/xiaozhi/ota/"

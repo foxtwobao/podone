@@ -19,6 +19,7 @@ from core.utils.util import (
     check_vad_update,
     check_asr_update,
     filter_sensitive_info,
+    normalize_ws_headers,
 )
 from typing import Dict, Any
 from collections import deque
@@ -209,7 +210,7 @@ class ConnectionHandler:
             self.loop = asyncio.get_running_loop()
 
             # 获取并验证headers
-            self.headers = dict(ws.request.headers)
+            self.headers = normalize_ws_headers(ws.request.headers)
             real_ip = self.headers.get("x-real-ip") or self.headers.get(
                 "x-forwarded-for"
             )

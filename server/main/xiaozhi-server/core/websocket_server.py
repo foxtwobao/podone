@@ -35,7 +35,7 @@ from core.connection import ConnectionHandler
 from config.config_loader import get_config_from_api_async
 from core.auth import AuthManager, AuthenticationError
 from core.utils.modules_initialize import initialize_modules
-from core.utils.util import check_vad_update, check_asr_update
+from core.utils.util import check_vad_update, check_asr_update, normalize_ws_headers
 
 TAG = __name__
 
@@ -92,7 +92,7 @@ class WebSocketServer:
             await asyncio.Future()
 
     async def _handle_connection(self, websocket: websockets.ServerConnection):
-        headers = dict(websocket.request.headers)
+        headers = normalize_ws_headers(websocket.request.headers)
         if headers.get("device-id", None) is None:
             # 尝试从 URL 的查询参数中获取 device-id
             from urllib.parse import parse_qs, urlparse
@@ -219,7 +219,7 @@ class WebSocketServer:
     async def _handle_auth(self, websocket: websockets.ServerConnection):
         # 先认证，后建立连接
         if self.auth_enable:
-            headers = dict(websocket.request.headers)
+            headers = normalize_ws_headers(websocket.request.headers)
             device_id = headers.get("device-id", None)
             client_id = headers.get("client-id", None)
             if self.allowed_devices and device_id in self.allowed_devices:
